@@ -1,33 +1,58 @@
 import { MonksEnhancedJournal, log, setting, i18n } from '../monks-enhanced-journal.js';
 
-export class SelectPlayer extends FormApplication {
+export class SelectPlayer extends foundry.applications.api.ApplicationV2 {
     users = [];
     showpic = false;
     updatepermission = false;
 
     constructor(sheet, options = {}) {
-        super(sheet.object, options);
+        super(options);
+        this.object = sheet.object;
         this.showpic = (options.showpic != undefined ? options.showpic : false);
         this.updatepermission = (options.updatepermission != undefined ? options.updatepermission : false);
 
         this.journalsheet = sheet;
     }
 
-    /** @override */
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "select-player",
-            classes: ["form", "select-sheet"],
-            title: i18n("MonksEnhancedJournal.SelectPlayer"),
-            template: "modules/monks-enhanced-journal/templates/selectplayer.html",
+    static DEFAULT_OPTIONS = {
+        id: "select-player",
+        classes: ["form", "select-sheet"],
+        tag: "form",
+        window: {
+            title: "MonksEnhancedJournal.SelectPlayer",
+            contentClasses: ["standard-form"]
+        },
+        position: {
             width: 400,
-            closeOnSubmit: true,
-            submitOnClose: false,
-            submitOnChange: false
-        });
+            height: "auto"
+        },
+        form: {
+            handler: SelectPlayer.#onSubmit,
+            submitOnChange: false,
+            closeOnSubmit: true
+        }
+    };
+
+    get title() {
+        return i18n("MonksEnhancedJournal.SelectPlayer");
     }
 
-    getData(options) {
+    static PARTS = {
+        form: {
+            template: "modules/monks-enhanced-journal/templates/selectplayer.html"
+        }
+    };
+
+    static async #onSubmit(event, form, formData) {
+        const app = form.closest('.app')?.app;
+        if (!app) return;
+
+        await app._updateObject(event, formData.object);
+    }
+
+    async _prepareContext(options) {
+        const context = await super._prepareContext(options);
+        
         this.users = game.users.map(u => {
             return {
                 id: u.id,
@@ -36,14 +61,14 @@ export class SelectPlayer extends FormApplication {
                 selected: false
             };
         }).filter(u => u.id != game.user.id);
-        return foundry.utils.mergeObject(super.getData(options),
-            {
-                users: this.users,
-                picchoice: this.canShowPic(),
-                showpic: this.showpic,
-                updatepermission: this.updatepermission
-            }
-        );
+        
+        return foundry.utils.mergeObject(context, {
+            users: this.users,
+            picchoice: this.canShowPic(),
+            showpic: this.showpic,
+            updatepermission: this.updatepermission,
+            object: this.object
+        });
     }
 
     canShowPic() {
@@ -65,22 +90,24 @@ export class SelectPlayer extends FormApplication {
         let id = li.dataset.userId;
 
         let user = this.users.find(u => u.id == id);
-        user.selected = $(ctrl).is(':checked');
+        user.selected = ctrl.checked;
     }
 
     updateShowPic(event) {
-        this.showpic = $(event.currentTarget).is(':checked');
+        this.showpic = event.currentTarget.checked;
         if (this.showpic) {
             this.updatepermission = false;
-            $('.update-permission', this.element).prop('checked', false);
+            const updatePermissionEl = this.element.querySelector('.update-permission');
+            if (updatePermissionEl) updatePermissionEl.checked = false;
         }
     }
 
     updatePermission(event) {
-        this.updatepermission = $(event.currentTarget).is(':checked');
+        this.updatepermission = event.currentTarget.checked;
         if (this.updatepermission) {
             this.showpic = false;
-            $('.show-pic', this.element).prop('checked', false);
+            const showPicEl = this.element.querySelector('.show-pic');
+            if (showPicEl) showPicEl.checked = false;
         }
     }
 
@@ -94,14 +121,29 @@ export class SelectPlayer extends FormApplication {
         this.journalsheet._onShowPlayers.call(this.journalsheet, event);
     }
 
-    activateListeners(html) {
-        super.activateListeners(html);
+    async _onRender(context, options) {
+        const html = this.element;
 
-        html.find('button[name="showall"]').click(this.showPlayers.bind(this, 'all'));
-        html.find('button[name="show"]').click(this.showPlayers.bind(this, 'players'));
+        // Add event listeners for buttons
+        html.querySelectorAll('button[name="showall"]').forEach(button => {
+            button.addEventListener('click', this.showPlayers.bind(this, 'all'));
+        });
 
-        html.find('input[type="checkbox"].user-select').change(this.updateSelection.bind(this));
-        html.find('input[type="checkbox"].pic-select').change(this.updateShowPic.bind(this));
-        html.find('input[type="checkbox"].update-permission').change(this.updatePermission.bind(this));
+        html.querySelectorAll('button[name="show"]').forEach(button => {
+            button.addEventListener('click', this.showPlayers.bind(this, 'players'));
+        });
+
+        // Add event listeners for checkboxes
+        html.querySelectorAll('input[type="checkbox"].user-select').forEach(input => {
+            input.addEventListener('change', this.updateSelection.bind(this));
+        });
+
+        html.querySelectorAll('input[type="checkbox"].pic-select').forEach(input => {
+            input.addEventListener('change', this.updateShowPic.bind(this));
+        });
+
+        html.querySelectorAll('input[type="checkbox"].update-permission').forEach(input => {
+            input.addEventListener('change', this.updatePermission.bind(this));
+        });
     }
 }

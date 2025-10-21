@@ -1,10 +1,10 @@
 import { MonksEnhancedJournal, log, setting, i18n, makeid, quantityname } from '../monks-enhanced-journal.js';
 import { getValue, setValue } from "../helpers.js";
 
-export class MakeOffering extends FormApplication {
+export class MakeOffering extends foundry.applications.api.ApplicationV2 {
     constructor(object, journalsheet, options = {}) {
-        super(object, options);
-
+        super(options);
+        this.object = object;
         this.journalsheet = journalsheet;
         this.offering = foundry.utils.mergeObject({
             currency: {},
@@ -20,30 +20,49 @@ export class MakeOffering extends FormApplication {
         }
     }
 
-    /** @override */
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "make-offering",
-            classes: ["form", "make-offering", "monks-journal-sheet", "dialog"],
-            title: i18n("MonksEnhancedJournal.MakeOffering"),
-            template: "modules/monks-enhanced-journal/templates/make-offering.html",
-            dragDrop: [
-                { dropSelector: ".make-offer-container" }
-            ],
+    static DEFAULT_OPTIONS = {
+        id: "make-offering",
+        classes: ["form", "make-offering", "monks-journal-sheet", "dialog"],
+        tag: "form",
+        window: {
+            title: "MonksEnhancedJournal.MakeOffering",
+            contentClasses: ["standard-form"]
+        },
+        position: {
             width: 600,
-            height: 'auto'
-        });
+            height: "auto"
+        },
+        form: {
+            handler: MakeOffering.#onSubmit,
+            submitOnChange: false,
+            closeOnSubmit: true
+        }
+    };
+
+    get title() {
+        return i18n("MonksEnhancedJournal.MakeOffering");
     }
 
-    getData(options) {
-        let data = super.getData(options);
+    static PARTS = {
+        form: {
+            template: "modules/monks-enhanced-journal/templates/make-offering.html"
+        }
+    };
 
-        data.private = this.offering.hidden;
+    static async #onSubmit(event, form, formData) {
+        const app = form.closest('.app')?.app;
+        if (!app) return;
 
-        data.currency = MonksEnhancedJournal.currencies.filter(c => c.convert != null).map(c => { return { id: c.id, name: c.name }; });
+        await app._updateObject(event, formData.object);
+    }
 
-        data.coins = this.offering.currency;
-        data.items = (this.offering.items || []).map(i => {
+    async _prepareContext(options) {
+        const context = await super._prepareContext(options);
+
+        context.private = this.offering.hidden;
+        context.currency = MonksEnhancedJournal.currencies.filter(c => c.convert != null).map(c => { return { id: c.id, name: c.name }; });
+        context.coins = this.offering.currency;
+        context.items = (this.offering.items || []).map(i => {
             let actor = game.actors.get(i.actorId)
             if (!actor)
                 return null;
@@ -63,19 +82,62 @@ export class MakeOffering extends FormApplication {
         }).filter(i => !!i);
 
         let actor = game.actors.get(this.offering?.actor?.id);
-        data.actor = {
+        context.actor = {
             id: actor?.id,
             name: actor?.name || "No Actor",
             img: actor?.img || "icons/svg/mystery-man.svg"
         };
 
-        return data;
+        context.object = this.object;
+        return context;
     }
 
     /* -------------------------------------------- */
 
     _canDragDrop() {
         return true;
+    }
+
+    async _onRender(context, options) {
+        const html = this.element;
+
+        // Set up drag and drop functionality
+        this._setupDragDrop();
+
+        // Add event listeners
+        html.querySelectorAll('.actor-icon').forEach(element => {
+            element.addEventListener('dblclick', this.openActor.bind(this));
+        });
+
+        html.querySelectorAll('.item-delete').forEach(element => {
+            element.addEventListener('click', this.removeOffering.bind(this));
+        });
+
+        html.querySelectorAll('.cancel-offer').forEach(element => {
+            element.addEventListener('click', this.close.bind(this));
+        });
+
+        html.querySelectorAll('.private').forEach(element => {
+            element.addEventListener('change', (event) => {
+                this.offering.hidden = event.currentTarget.checked;
+            });
+        });
+
+        html.querySelectorAll('.currency-field').forEach(element => {
+            element.addEventListener('blur', (event) => {
+                this.offering.currency[event.currentTarget.getAttribute('name')] = parseInt(event.currentTarget.value || 0);
+            });
+        });
+    }
+
+    _setupDragDrop() {
+        const html = this.element;
+        
+        // Set up drop zones
+        html.querySelectorAll('.make-offer-container').forEach(element => {
+            element.addEventListener('dragover', (event) => event.preventDefault());
+            element.addEventListener('drop', this._onDrop.bind(this));
+        });
     }
 
     async _onDrop(event) {
@@ -147,20 +209,7 @@ export class MakeOffering extends FormApplication {
         }
     }
 
-    activateListeners(html) {
-        super.activateListeners(html);
 
-        $('.actor-icon', html).on("dblclick", this.openActor.bind(this));
-        $('.item-delete', html).on("click", this.removeOffering.bind(this));
-
-        $('.cancel-offer', html).on("click", this.close.bind(this));
-        $('.private', html).on("change", (event) => {
-            this.offering.hidden = $(event.currentTarget).prop("checked");
-        });
-        $('.currency-field', html).on("blur", (event) => {
-            this.offering.currency[$(event.currentTarget).attr("name")] = parseInt($(event.currentTarget).val() || 0);
-        });
-    }
 
     removeOffering(event) {
         let that = this;

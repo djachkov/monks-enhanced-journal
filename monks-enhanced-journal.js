@@ -1,3 +1,13 @@
+/**
+ * Monk's Enhanced Journal - Main Module
+ * 
+ * COMPATIBILITY NOTES FOR v13+:
+ * - TinyMCE is deprecated in v13+ and removed in v14+
+ * - Most jQuery usage has been converted to vanilla JavaScript
+ * - Complex DOM manipulation functions marked with TODO comments need complete rewrite
+ * - Some legacy Application patterns may need updating for full v13+ compatibility
+ */
+
 import { registerSettings } from "./settings.js";
 import { EnhancedJournal } from "./apps/enhanced-journal.js"
 import { SlideshowWindow } from "./apps/slideshow-window.js"
@@ -279,23 +289,27 @@ export class MonksEnhancedJournal {
         MEJFontHelper.loadFonts();
         //APSJ.init();
 
-        if (!(CONFIG.TinyMCE.content_css instanceof Array))
-            CONFIG.TinyMCE.content_css = [CONFIG.TinyMCE.content_css];
-        CONFIG.TinyMCE.content_css.push('modules/monks-enhanced-journal/css/editor.css');
-        /*
-        if (game.modules.get("polyglot")?.active)
-            CONFIG.TinyMCE.content_css.push('modules/polyglot/css/polyglot.css');
-            */
+        // TinyMCE configuration (deprecated in v13+, removed in v14+)
+        if (CONFIG.TinyMCE && !foundry.utils.isNewerVersion("13.0.0", game.version)) {
+            warn("TinyMCE configuration is deprecated in FoundryVTT v13+. Consider updating to ProseMirror.");
+            
+            if (!(CONFIG.TinyMCE.content_css instanceof Array))
+                CONFIG.TinyMCE.content_css = [CONFIG.TinyMCE.content_css];
+            CONFIG.TinyMCE.content_css.push('modules/monks-enhanced-journal/css/editor.css');
+            /*
+            if (game.modules.get("polyglot")?.active)
+                CONFIG.TinyMCE.content_css.push('modules/polyglot/css/polyglot.css');
+                */
 
-        CONFIG.TinyMCE.style_formats.push({
-            title: "Enhanced Journal",
-            items: [
-                { block: "section", classes: "readaloud", title: "Read Aloud", wrapper: true },
-                { inline: "span", classes: "drop-cap", title: "Drop Cap" }
-            ]
-        });
+            CONFIG.TinyMCE.style_formats.push({
+                title: "Enhanced Journal",
+                items: [
+                    { block: "section", classes: "readaloud", title: "Read Aloud", wrapper: true },
+                    { inline: "span", classes: "drop-cap", title: "Drop Cap" }
+                ]
+            });
 
-        CONFIG.TinyMCE.style_formats.push({
+            CONFIG.TinyMCE.style_formats.push({
             title: "Dynamic Fonts",
             items: [
                 { inline: "span", classes: "font-size-11", title: "11" },
@@ -311,6 +325,7 @@ export class MonksEnhancedJournal {
                 { inline: "span", classes: "font-size-48", title: "48" }
             ]
         });
+        }
 
         const moreNoteIcons = {
             "Acid": "icons/svg/acid.svg",
@@ -358,7 +373,7 @@ export class MonksEnhancedJournal {
 
         CONFIG.TextEditor.enrichers.push({ id: 'MonksEnhancedJournalPicture', pattern: new RegExp(`@(Picture)\\[([^\\]]+)\\](?:{([^}]+)})?`, 'g'), enricher: MonksEnhancedJournal._createPictureLink });
 
-        Note.prototype._canHUD = function(user, event) {
+        Note.prototype._canHUD = function (user, event) {
             return game.user.isGM && this.entry;
         }
 
@@ -488,7 +503,7 @@ export class MonksEnhancedJournal {
                 return oldRenderPopout.call(this);
         }
 
-        Journal.prototype.constructor._showEntry = async function(entryId, mode = null, force = true, showid) {
+        Journal.prototype.constructor._showEntry = async function (entryId, mode = null, force = true, showid) {
             let entry = await fromUuid(entryId);
             const options = { tempOwnership: force, mode: JournalSheet.VIEW_MODES.MULTIPLE, pageIndex: 0 };
             if (entry instanceof JournalEntryPage) {
@@ -633,9 +648,9 @@ export class MonksEnhancedJournal {
             const html = document.createElement("div");
             html.innerHTML = async ? Promise.resolve(data) : String(data);
 
-            $('a[href]', html).each(function () {
-                if ($(this).attr('href').startsWith("#"))
-                    $(this).addClass("journal-link");
+            html.querySelectorAll('a[href]').forEach(element => {
+                if (element.getAttribute('href').startsWith("#"))
+                    element.classList.add("journal-link");
             });
 
             let updateTextArray = true;
@@ -922,7 +937,7 @@ export class MonksEnhancedJournal {
         }, "MIXED");
 
         /*
-        patchFunc("JournalEntryPage.prototype._onCreate". async function (wrapped, ...args) {
+        patchFunc("JournalEntryPage.prototype._onCreate", async function (wrapped, ...args) {
             let [data, options, userid] = args;
             if (game.user.id !== userid)
                 return;
@@ -1074,7 +1089,7 @@ export class MonksEnhancedJournal {
             log(result);
         }*/
 
-        let stripData = function(data) {
+        let stripData = function (data) {
             if (data.flags['monks-enhanced-journal'] != undefined) {
                 for (let [k, v] of Object.entries(data.flags['monks-enhanced-journal'])) {
                     if (v?.notes != undefined)
@@ -1126,7 +1141,7 @@ export class MonksEnhancedJournal {
         });
 
         let clickNote2 = function (wrapped, ...args) {
-            const options = { newtab: setting("open-new-tab")};
+            const options = { newtab: setting("open-new-tab") };
             if (this.page) {
                 options.mode = JournalSheet.VIEW_MODES.SINGLE;
                 options.pageId = this.page.id;
@@ -1160,7 +1175,7 @@ export class MonksEnhancedJournal {
                             ip.render(true);
                         }
                     } else
-                        return ui.notifications.warn(format("MonksEnhancedJournal.msg.YouDontHaveDocumentPermissions", { documentname: this.entry.documentName}));
+                        return ui.notifications.warn(format("MonksEnhancedJournal.msg.YouDontHaveDocumentPermissions", { documentname: this.entry.documentName }));
                 }
             }
         }
@@ -1248,7 +1263,7 @@ export class MonksEnhancedJournal {
                 this._sheet = null;
                 if (sheetOpen) {
                     if (this.enhancedjournal)
-                        this.enhancedjournal.render(true);
+                        this.enhancedjournal.render({ force: true });
                     else
                         this.sheet.render(true);
                 }
@@ -1361,7 +1376,8 @@ export class MonksEnhancedJournal {
                     } else {
                         let a = wrapped.call(this, match, options);
                         if (parts.length > 1) {
-                            $(a).attr("data-anchor", parts[1]).append(`, ${parts[1]}`);
+                            a.setAttribute("data-anchor", parts[1]);
+                            a.append(`, ${parts[1]}`);
                         }
                         return a;
                     }
@@ -1372,7 +1388,8 @@ export class MonksEnhancedJournal {
 
             let a = wrapped.call(this, match, options);
             if (parts.length > 1) {
-                $(a).attr("data-anchor", parts[1]).append(`, ${parts[1]}`);
+                a.setAttribute("data-anchor", parts[1]);
+                a.append(`, ${parts[1]}`);
             }
             return a;
         }
@@ -1460,6 +1477,9 @@ export class MonksEnhancedJournal {
                 name: i18n("MonksEnhancedJournal.ConvertToEnhancedJournal"),
                 icon: '<i class="fas fa-file-arrow-down"></i>',
                 condition: li => {
+                    if (!li || !li.length || !li[0] || !li[0].dataset) {
+                        return false;
+                    }
                     let journal = game.journal.get(li[0].dataset.entryId);
                     if (!journal)
                         return false;
@@ -1470,6 +1490,9 @@ export class MonksEnhancedJournal {
                     return !MonksEnhancedJournal.getMEJType(journal);
                 },
                 callback: async (li) => {
+                    if (!li || !li.length || !li[0] || !li[0].dataset) {
+                        return;
+                    }
                     let journal = game.journal.get(li[0].dataset.entryId);
                     if (journal) {
                         let isGood = true;
@@ -1519,6 +1542,9 @@ export class MonksEnhancedJournal {
                         return game.user.isGM || setting("allow-player");
                     },
                     callback: async (li) => {
+                        if (!li || !li.length || !li[0] || !li[0].dataset) {
+                            return;
+                        }
                         let journal = game.journal.get(li[0].dataset.entryId);
                         if (journal) {
                             MonksEnhancedJournal.fixType(journal);
@@ -1535,6 +1561,9 @@ export class MonksEnhancedJournal {
                         return game.user.isGM || setting("allow-player");
                     },
                     callback: async (li) => {
+                        if (!li || !li.length || !li[0] || !li[0].dataset) {
+                            return;
+                        }
                         let journal = game.journal.get(li[0].dataset.entryId);
                         if (journal) {
                             if (!!MonksEnhancedJournal.getMEJType(journal)) {
@@ -1556,6 +1585,9 @@ export class MonksEnhancedJournal {
                         return game.user.isGM || setting("allow-player");
                     },
                     callback: async (li) => {
+                        if (!li || !li.length || !li[0] || !li[0].dataset) {
+                            return;
+                        }
                         let journal = game.journal.get(li[0].dataset.entryId);
                         if (journal) {
                             MonksEnhancedJournal.fixType(journal);
@@ -2192,7 +2224,7 @@ export class MonksEnhancedJournal {
                 let idx = text.lastIndexOf('</section>');
                 text = text.slice(0, idx) + text.slice(idx + 10, text.length);
             }
-        
+
             canvas.hud.bubbles.say(object, text);
             if (broadcast) {
                 MonksEnhancedJournal.emit('chatbubble', { entityId: object.id, text: text });
@@ -2218,7 +2250,7 @@ export class MonksEnhancedJournal {
     }
 
     static openObjectiveLink(ev) {
-        let id = $(ev.currentTarget).closest('li')[0].dataset.documentId;
+        let id = ev.currentTarget.closest('li').dataset.documentId;
         let document = game.journal.get(id);
         if (!MonksEnhancedJournal.openJournalEntry(document))
             return document.sheet.render(true);
@@ -2301,7 +2333,7 @@ export class MonksEnhancedJournal {
                 });
                 img._render(true);
             } else
-                ui.notifications.warn(format("MonksEnhancedJournal.msg.YouDontHaveDocumentPermissions", { documentName: doc.documentName} ));
+                ui.notifications.warn(format("MonksEnhancedJournal.msg.YouDontHaveDocumentPermissions", { documentName: doc.documentName }));
             return true;
         }
 
@@ -2312,11 +2344,13 @@ export class MonksEnhancedJournal {
                 MonksEnhancedJournal.journal.open(doc, options.newtab, options);
             else {
                 delete options.autoPage;
-                MonksEnhancedJournal.journal.render(true, options);
+                MonksEnhancedJournal.journal.render({ force: true, ...options });
             }
         }
-        else
-            MonksEnhancedJournal.journal = new EnhancedJournal(doc, options).render(true, options);
+        else {
+            MonksEnhancedJournal.journal = new EnhancedJournal(doc, options);
+            MonksEnhancedJournal.journal.render({ force: true, ...options });
+        }
 
         return true;
     }
@@ -2347,11 +2381,11 @@ export class MonksEnhancedJournal {
             }
         } else {
             if (game.system.id == "burningwheel") {
-				const a = RegExp.escape(Handlebars.escapeExpression(choices))
-					, s = new RegExp(` value=["']${a}["']`);
-				return options.fn(this).replace(s, "$& selected")
-			} else
-				Object.entries(choices).forEach(e => option(...e));
+                const a = RegExp.escape(Handlebars.escapeExpression(choices))
+                    , s = new RegExp(` value=["']${a}["']`);
+                return options.fn(this).replace(s, "$& selected")
+            } else
+                Object.entries(choices).forEach(e => option(...e));
         }
         return new Handlebars.SafeString(html);
     }
@@ -2553,7 +2587,7 @@ export class MonksEnhancedJournal {
         if (chatbubbles)
             chatbubbles.default = !game.user.isGM;
 
-        $('body').attr("inline-roll-styling", setting("inline-roll-styling"));
+        document.body.setAttribute("inline-roll-styling", setting("inline-roll-styling"));
 
         for (let entry of game.journal) {
             if (entry?.flags['monks-enhanced-journal']?.type) {
@@ -2579,7 +2613,7 @@ export class MonksEnhancedJournal {
             if (setting("fix-person")) {
                 try {
                     MonksEnhancedJournal.fixPersonAttributes();
-                   // game.settings.set("monks-enhanced-journal", "fix-person", false);
+                    // game.settings.set("monks-enhanced-journal", "fix-person", false);
                 } catch { }
             }
             if (setting("fix-adjustment")) {
@@ -2598,50 +2632,72 @@ export class MonksEnhancedJournal {
 
         MonksEnhancedJournal.cleanPageState();
 
-        $('<div>').attr('id', 'slideshow-canvas').addClass('monks-journal-sheet flexrow').append($('<div>').addClass('slideshow-container flexcol playing').append($('<div>').addClass('slide-showing'))).append($('<div>').addClass('slide-padding')).appendTo($('body'));
+        const slideshowCanvas = document.createElement('div');
+        slideshowCanvas.id = 'slideshow-canvas';
+        slideshowCanvas.className = 'monks-journal-sheet flexrow';
+        
+        const slideshowContainer = document.createElement('div');
+        slideshowContainer.className = 'slideshow-container flexcol playing';
+        
+        const slideShowing = document.createElement('div');
+        slideShowing.className = 'slide-showing';
+        slideshowContainer.appendChild(slideShowing);
+        
+        const slidePadding = document.createElement('div');
+        slidePadding.className = 'slide-padding';
+        
+        slideshowCanvas.appendChild(slideshowContainer);
+        slideshowCanvas.appendChild(slidePadding);
+        document.body.appendChild(slideshowCanvas);
         //new SlideshowWindow().render(true);
         new ResizeObserver(() => {
             //change font size to match height
-            let size = $('#slideshow-canvas .slide-textarea').outerWidth() / 50;
-            $('#slideshow-canvas .slide-textarea').css({ 'font-size': `${size}px` });
-        }).observe($('#slideshow-canvas')[0]);
+            const textarea = document.querySelector('#slideshow-canvas .slide-textarea');
+            if (textarea) {
+                let size = textarea.offsetWidth / 50;
+                textarea.style.fontSize = `${size}px`;
+            }
+        }).observe(document.querySelector('#slideshow-canvas'));
         //this.journal = new EnhancedJournal();
         //this.hookSwapMode();
         //Hooks.on("closeJournalSheet", (app, html, data) => {
         //    this._onJournalRemoved(app);
         //});
-        //Andale Mono=andale mono,times; Arial=arial,helvetica,sans-serif; Arial Black=arial black,avant garde; Book Antiqua=book antiqua,palatino; Comic Sans MS=comic sans ms,sans-serif; Courier New=courier new,courier; Georgia=georgia,palatino; Helvetica=helvetica; Impact=impact,chicago; Oswald=oswald; Symbol=symbol; Tahoma=tahoma,arial,helvetica,sans-serif; Terminal=terminal,monaco; Times New Roman=times new roman,times; Trebuchet MS=trebuchet ms,geneva; Verdana=verdana,geneva; Webdings=webdings; Wingdings=wingdings,zapf dingbats
-        let font_formats = (CONFIG.TinyMCE.font_formats || '').split(';').reduce((obj, f, index) => { let parts = f.split('='); if (parts[0] && parts[1]) obj[parts[0]] = parts[1]; return obj; }, {});
-        foundry.utils.mergeObject(font_formats, {
-            'Andale Mono':'andale mono, times',
-            'Arial':'arial, helvetica, sans- serif',
-            'Arial Black':'arial black, avant garde',
-            'Book Antiqua':'book antiqua, palatino',
-            'Comic Sans MS':'comic sans ms, sans-serif',
-            'Courier New':'courier new, courier',
-            'Georgia':'georgia, palatino',
-            'Helvetica':'helvetica',
-            'Impact':'impact, chicago',
-            'Oswald':'oswald',
-            'Symbol':'symbol',
-            'Tahoma':'tahoma, arial, helvetica, sans-serif',
-            'Terminal':'terminal, monaco',
-            'Times New Roman':'times new roman, times',
-            'Trebuchet MS':'trebuchet ms, geneva',
-            'Verdana':'verdana, geneva',
-            'Webdings':'webdings',
-            'Wingdings':'wingdings, zapf dingbats',
-            'Anglo Text': 'anglo_textregular',
-            'Lovers Quarrel': 'lovers_quarrelregular',
-            'Play': 'Play - Regular'
-        });
-        CONFIG.TinyMCE.font_formats = Object.entries(font_formats).map(([k, v]) => k + '=' + v).join(';');
+        // TinyMCE font configuration (deprecated in v13+)
+        if (CONFIG.TinyMCE && typeof tinyMCE !== 'undefined') {
+            //Andale Mono=andale mono,times; Arial=arial,helvetica,sans-serif; Arial Black=arial black,avant garde; Book Antiqua=book antiqua,palatino; Comic Sans MS=comic sans ms,sans-serif; Courier New=courier new,courier; Georgia=georgia,palatino; Helvetica=helvetica; Impact=impact,chicago; Oswald=oswald; Symbol=symbol; Tahoma=tahoma,arial,helvetica,sans-serif; Terminal=terminal,monaco; Times New Roman=times new roman,times; Trebuchet MS=trebuchet ms,geneva; Verdana=verdana,geneva; Webdings=webdings; Wingdings=wingdings,zapf dingbats
+            let font_formats = (CONFIG.TinyMCE.font_formats || '').split(';').reduce((obj, f, index) => { let parts = f.split('='); if (parts[0] && parts[1]) obj[parts[0]] = parts[1]; return obj; }, {});
+            foundry.utils.mergeObject(font_formats, {
+                'Andale Mono': 'andale mono, times',
+                'Arial': 'arial, helvetica, sans- serif',
+                'Arial Black': 'arial black, avant garde',
+                'Book Antiqua': 'book antiqua, palatino',
+                'Comic Sans MS': 'comic sans ms, sans-serif',
+                'Courier New': 'courier new, courier',
+                'Georgia': 'georgia, palatino',
+                'Helvetica': 'helvetica',
+                'Impact': 'impact, chicago',
+                'Oswald': 'oswald',
+                'Symbol': 'symbol',
+                'Tahoma': 'tahoma, arial, helvetica, sans-serif',
+                'Terminal': 'terminal, monaco',
+                'Times New Roman': 'times new roman, times',
+                'Trebuchet MS': 'trebuchet ms, geneva',
+                'Verdana': 'verdana, geneva',
+                'Webdings': 'webdings',
+                'Wingdings': 'wingdings, zapf dingbats',
+                'Anglo Text': 'anglo_textregular',
+                'Lovers Quarrel': 'lovers_quarrelregular',
+                'Play': 'Play - Regular'
+            });
+            CONFIG.TinyMCE.font_formats = Object.entries(font_formats).map(([k, v]) => k + '=' + v).join(';');
 
-        //CONFIG.TinyMCE.font_formats = CONFIG.TinyMCE.font_formats = (CONFIG.TinyMCE.font_formats ? CONFIG.TinyMCE.font_formats + ";" : "") + "Anglo Text=anglo_textregular;Lovers Quarrel=lovers_quarrelregular;Play=Play-Regular";
+            //CONFIG.TinyMCE.font_formats = CONFIG.TinyMCE.font_formats = (CONFIG.TinyMCE.font_formats ? CONFIG.TinyMCE.font_formats + ";" : "") + "Anglo Text=anglo_textregular;Lovers Quarrel=lovers_quarrelregular;Play=Play-Regular";
 
-        tinyMCE.PluginManager.add('background', backgroundinit);
-        if (setting("add-create-link"))
-            tinyMCE.PluginManager.add('createlink', createlinkinit);
+            tinyMCE.PluginManager.add('background', backgroundinit);
+            if (setting("add-create-link"))
+                tinyMCE.PluginManager.add('createlink', createlinkinit);
+        }
 
         // Preload fonts for polyglot so there isn't a delay in showing them, and possibly revealing something
         /*
@@ -2718,7 +2774,7 @@ export class MonksEnhancedJournal {
                     editable: false
                 });
                 await img._render(true);
-                $(img.element).attr('data-show-id', data.showid);
+                img.element.setAttribute('data-show-id', data.showid);
             } else {
                 Journal._showEntry(data.uuid, null, true);
             }
@@ -2727,7 +2783,7 @@ export class MonksEnhancedJournal {
 
     static async setChatBubbleIdx(data) {
         let object = await fromUuid(data.uuid);
-        if(object)
+        if (object)
             object.setFlag('monks-enhanced-journal', 'chatbubbleidx', data.idx);
     }
 
@@ -2824,16 +2880,21 @@ export class MonksEnhancedJournal {
                             $('#slideshow-display .slide-textarea').css({ 'font-size': `${size}px` });
                         }).observe($('#slideshow-display')[0]);
                     }
-                    $('#slideshow-display header h4.window-title').html(MonksEnhancedJournal.slideshow.object.name)
-                    MonksEnhancedJournal.slideshow.element = $('#slideshow-display');
+                    const titleElement = document.querySelector('#slideshow-display header h4.window-title');
+                    if (titleElement) titleElement.innerHTML = MonksEnhancedJournal.slideshow.object.name;
+                    MonksEnhancedJournal.slideshow.element = document.querySelector('#slideshow-display');
                 } else {
-                    MonksEnhancedJournal.slideshow.element = $('#slideshow-canvas');
+                    MonksEnhancedJournal.slideshow.element = document.querySelector('#slideshow-canvas');
                     let canvascolor = slideshow.flags["monks-enhanced-journal"].canvascolor || "";
-                    $(MonksEnhancedJournal.slideshow.element).css({ 'background-color': canvascolor});
-                    $('.slide-padding', MonksEnhancedJournal.slideshow.element).css({ flex: '0 0 ' + $('#sidebar').width() + 'px' });
-                    MonksEnhancedJournal.slideshow.element.toggleClass('fullscreen', showas == 'fullscreen');
+                    MonksEnhancedJournal.slideshow.element.style.backgroundColor = canvascolor;
+                    const slidePadding = MonksEnhancedJournal.slideshow.element.querySelector('.slide-padding');
+                    if (slidePadding) {
+                        const sidebar = document.querySelector('#sidebar');
+                        slidePadding.style.flex = `0 0 ${sidebar ? sidebar.offsetWidth : 300}px`;
+                    }
+                    MonksEnhancedJournal.slideshow.element.classList.toggle('fullscreen', showas == 'fullscreen');
                 }
-                MonksEnhancedJournal.slideshow.element.addClass('active');
+                MonksEnhancedJournal.slideshow.element.classList.add('active');
 
                 if (MonksEnhancedJournal.slideshow.content.audiofile != undefined && MonksEnhancedJournal.slideshow.content.audiofile != '' && MonksEnhancedJournal.slideshow.sound == undefined) {
                     let volume = MonksEnhancedJournal.slideshow.content.volume ?? 1;
@@ -2993,9 +3054,11 @@ export class MonksEnhancedJournal {
     static stopSlideshow(data) {
         if (!game.user.isGM) {
             if (MonksEnhancedJournal.slideshow != undefined) {
-                MonksEnhancedJournal.slideshow?.element?.removeClass('active');
-                if (MonksEnhancedJournal.slideshow?.element.attr('id') == "slideshow-display")
-                    $('.close', MonksEnhancedJournal.slideshow?.element).click();
+                MonksEnhancedJournal.slideshow?.element?.classList.remove('active');
+                if (MonksEnhancedJournal.slideshow?.element.id == "slideshow-display") {
+                    const closeButton = MonksEnhancedJournal.slideshow?.element.querySelector('.close');
+                    if (closeButton) closeButton.click();
+                }
 
                 if (MonksEnhancedJournal.slideshow?.sound?.src != undefined) {
                     MonksEnhancedJournal.slideshow?.sound.stop();
@@ -3019,38 +3082,67 @@ export class MonksEnhancedJournal {
             background = `background-color:${slide.background?.color}`;
 
         let windowSize = 25;
-        let windowFont = $(".window-content").css("font-family");
+        const windowContentElement = document.querySelector(".window-content");
+        let windowFont = windowContentElement ? getComputedStyle(windowContentElement).fontFamily : 'sans-serif';
 
-        let textarea = $('<div>').addClass('slide-textarea');
+        let textarea = document.createElement('div');
+        textarea.className = 'slide-textarea';
+        
         for (let t of slide.texts) {
             let bgcolor = Color.from(t.background || '#000000');
             let color = t.color || foundry.utils.getProperty(slideshow, "font.color") || "#FFFFFF";
             let font = t.font || foundry.utils.getProperty(slideshow, "font.name") || windowFont;
             let size = t.size || foundry.utils.getProperty(slideshow, "font.size") || windowSize;
             size = (size / windowSize) * 100;
-            let style = {
-                'font-size': size + "%",
-                'font-family': font,
-                color,
-                'background-color': bgcolor.toRGBA(t.opacity != undefined ? t.opacity : 0.5),
-                'text-align': (t.align == 'middle' ? 'center' : t.align),
+            
+            let slideText = document.createElement('div');
+            slideText.className = 'slide-text';
+            slideText.setAttribute('data-id', t.id);
+            slideText.innerHTML = t.text;
+            
+            Object.assign(slideText.style, {
+                fontSize: size + "%",
+                fontFamily: font,
+                color: color,
+                backgroundColor: bgcolor.toRGBA(t.opacity != undefined ? t.opacity : 0.5),
+                textAlign: (t.align == 'middle' ? 'center' : t.align),
                 top: (t.top || 0) + "%",
                 left: (t.left || 0) + "%",
                 right: (t.right || 0) + "%",
-                bottom: (t.bottom || 0) + "%",
-            };
-            if ($.isNumeric(t.fadein))
-                style.opacity = 0;
+                bottom: (t.bottom || 0) + "%"
+            });
+            
+            if (!isNaN(parseFloat(t.fadein))) {
+                slideText.style.opacity = '0';
+            }
 
-            textarea.append($('<div>').addClass('slide-text').attr({'data-id': t.id}).html(t.text).css(style));
+            textarea.appendChild(slideText);
         }
 
-        let tag = VideoHelper.hasVideoExtension(slide.img) ? "<video>" : "<img>";
-
-        return $('<div>').addClass("slide animate-slide loading").attr('data-slide-id', slide.id)
-            .append($('<div>').addClass('slide-background').append($('<div>').attr('style', background)))
-            .append($(tag).addClass('slide-image').attr({ 'src': slide.img, 'loop': true, 'autoplay': "true" }).css({ 'object-fit': slide.sizing}))
-            .append(textarea);
+        let tag = VideoHelper.hasVideoExtension(slide.img) ? "video" : "img";
+        
+        const slideDiv = document.createElement('div');
+        slideDiv.className = "slide animate-slide loading";
+        slideDiv.setAttribute('data-slide-id', slide.id);
+        
+        const slideBackground = document.createElement('div');
+        slideBackground.className = 'slide-background';
+        const backgroundDiv = document.createElement('div');
+        backgroundDiv.setAttribute('style', background);
+        slideBackground.appendChild(backgroundDiv);
+        
+        const slideImage = document.createElement(tag);
+        slideImage.className = 'slide-image';
+        slideImage.setAttribute('src', slide.img);
+        slideImage.setAttribute('loop', 'true');
+        slideImage.setAttribute('autoplay', 'true');
+        slideImage.style.objectFit = slide.sizing;
+        
+        slideDiv.appendChild(slideBackground);
+        slideDiv.appendChild(slideImage);
+        slideDiv.appendChild(textarea);
+        
+        return slideDiv;
     }
 
     static refreshObjectives(resize = false) {
@@ -3104,62 +3196,71 @@ export class MonksEnhancedJournal {
 
     static updateDirectory(html, main) {
         if (setting("show-folder-sort")) {
-            $('.folder', html).each(function () {
-                let id = this.dataset.folderId;
+            html.querySelectorAll('.folder').forEach(function (folderElement) {
+                let id = folderElement.dataset.folderId;
                 const folder = game.folders.get(id);
 
                 if (folder?.sorting !== "a") {
-                    $('header h3 i', this).removeClass('fas').addClass('far');
+                    const headerIcon = folderElement.querySelector('header h3 i');
+                    if (headerIcon) {
+                        headerIcon.classList.remove('fas');
+                        headerIcon.classList.add('far');
+                    }
                 }
             });
         }
         const levels = Object.entries(CONST.DOCUMENT_OWNERSHIP_LEVELS);
         const types = MonksEnhancedJournal.getDocumentTypes();
-        $('.document.journalentry', html).each(function () {
-            let id = this.dataset.entryId;
-            let document = game.journal.get(id);
+        html.querySelectorAll('.document.journalentry').forEach(function (journalElement) {
+            let id = journalElement.dataset.entryId;
+            let journal = game.journal.get(id);
 
             let canShow = (game.user.isGM || setting('allow-player'));
 
             let docIcon = "fa-book";
             let type = "journalbook";
-            if (document.pages.size == 1) {
-                type = document.pages.contents[0].getFlag('monks-enhanced-journal', 'type');
+            if (journal.pages.size == 1) {
+                type = journal.pages.contents[0].getFlag('monks-enhanced-journal', 'type');
                 if (type == "base" || type == "oldentry") type = "journalentry";
                 if (types[type])
                     docIcon = MonksEnhancedJournal.getIcon(type);
             }
 
-            if ($('.entry-name .journal-type', this).length)
-                $('.entry-name .journal-type', this).attr('class', 'journal-type fas fa-fw ' + docIcon);
-            else {
-                let icon = $('<i>').addClass('fas fa-fw ' + docIcon);
+            const existingIcon = journalElement.querySelector('.entry-name .journal-type');
+            if (existingIcon) {
+                existingIcon.className = 'journal-type fas fa-fw ' + docIcon;
+            } else {
+                let icon = document.createElement('i');
+                icon.className = 'fas fa-fw ' + docIcon;
                 /*
-                if (type == "journalfolder" && document.pages.contents.length > 1 && canShow) {
+                if (type == "journalfolder" && journal.pages.contents.length > 1 && canShow) {
                     icon.on("click", (event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        let collapsed = !document.getFlag('monks-enhanced-journal', 'collapsed');
-                        game.folders._expanded[document.id] = !collapsed;
-                        document.setFlag('monks-enhanced-journal', 'collapsed', collapsed);
-                        $(`.document.journalentry.folder[data-document-id="${document.id}"]`).toggleClass("collapsed", collapsed);
-                        $(`.document.journalentry.folder[data-document-id="${document.id}"] .entry-name i`).toggleClass('fa-angle-down', !collapsed).toggleClass('fa-angle-right', collapsed);
+                        let collapsed = !journal.getFlag('monks-enhanced-journal', 'collapsed');
+                        game.folders._expanded[journal.id] = !collapsed;
+                        journal.setFlag('monks-enhanced-journal', 'collapsed', collapsed);
+                        $(`.document.journalentry.folder[data-document-id="${journal.id}"]`).toggleClass("collapsed", collapsed);
+                        $(`.document.journalentry.folder[data-document-id="${journal.id}"] .entry-name i`).toggleClass('fa-angle-down', !collapsed).toggleClass('fa-angle-right', collapsed);
                     });
                 } else
                 */
-                    icon.addClass("journal-type");
-                $('.entry-name', this).prepend(icon);
+                icon.classList.add("journal-type");
+                const entryName = journalElement.querySelector('.entry-name');
+                if (entryName) {
+                    entryName.prepend(icon);
+                }
             }
 
             /*
-            if (type == "journalfolder" && !$('.subdirectory', this).length && document.pages.contents.length > 1 && canShow) {
-                $(this).addClass("folder flexcol").removeClass("flexrow").attr('data-folder-id', document.id);
-                if (!document.getFlag('monks-enhanced-journal', 'collapsed'))
-                    game.folders._expanded[document.id] = true;
+            if (type == "journalfolder" && !$('.subdirectory', this).length && journal.pages.contents.length > 1 && canShow) {
+                $(this).addClass("folder flexcol").removeClass("flexrow").attr('data-folder-id', journal.id);
+                if (!journal.getFlag('monks-enhanced-journal', 'collapsed'))
+                    game.folders._expanded[journal.id] = true;
                 else
                     $(this).addClass("collapsed");
                 let pageList = $('<ol>').addClass("subdirectory").insertAfter($('.entry-name', this));
-                for (let page of document.pages.contents) {
+                for (let page of journal.pages.contents) {
                     let pageType = page.getFlag('monks-enhanced-journal', 'type');
                     let pageIcon = MonksEnhancedJournal.getIcon(pageType);
                     let liPage = $('<li>')
@@ -3193,29 +3294,46 @@ export class MonksEnhancedJournal {
             if (type == 'quest') {
                 //let ownership = entry.ownership.default;
                 //let completed = entry.getFlag('monks-enhanced-journal', 'completed');
-                let page = document.pages.contents[0];
+                let page = journal.pages.contents[0];
                 let status = foundry.utils.getProperty(page, 'flags.monks-enhanced-journal.status') || (foundry.utils.getProperty(page, 'flags.monks-enhanced-journal.completed') ? 'completed' : 'inactive');
-                $(this).attr('status', status);
+                journalElement.setAttribute('status', status);
             }
 
-            $('.entry-name .permissions', this).remove();
-            if ((setting('show-permissions') == 'true' || (setting('show-permissions') == 'mej' && !main)) && game.user.isGM && (document.ownership.default > 0 || Object.keys(document.ownership).length > 1)) {
-                let permissions = $('<div>').addClass('permissions');
+            const existingPermissions = journalElement.querySelector('.entry-name .permissions');
+            if (existingPermissions) {
+                existingPermissions.remove();
+            }
+            
+            if ((setting('show-permissions') == 'true' || (setting('show-permissions') == 'mej' && !main)) && game.user.isGM && (journal.ownership.default > 0 || Object.keys(journal.ownership).length > 1)) {
+                let permissions = document.createElement('div');
+                permissions.className = 'permissions';
 
-                if (document.ownership.default > 0) {
-                    const [ownership] = levels.find(([, level]) => level === document.ownership.default);
-                    permissions.append($('<i>').addClass('fas fa-users').attr('title', `${i18n("MonksEnhancedJournal.Everyone")}: ${i18n(`OWNERSHIP.${ownership}`)}`));
+                if (journal.ownership.default > 0) {
+                    const [ownership] = levels.find(([, level]) => level === journal.ownership.default);
+                    const usersIcon = document.createElement('i');
+                    usersIcon.className = 'fas fa-users';
+                    usersIcon.title = `${i18n("MonksEnhancedJournal.Everyone")}: ${i18n(`OWNERSHIP.${ownership}`)}`;
+                    permissions.appendChild(usersIcon);
                 }
-                for (let [key, value] of Object.entries(document.ownership)) {
+                
+                for (let [key, value] of Object.entries(journal.ownership)) {
                     let user = game.users.find(u => {
                         return u.id == key && !u.isGM;
                     });
-                    if (user != undefined && value > 0 && value != document.ownership.default) {
+                    if (user != undefined && value > 0 && value != journal.ownership.default) {
                         const [ownership] = levels.find(([, level]) => level === value);
-                        permissions.append($('<div>').css({ backgroundColor: user.color }).html(user.name[0]).attr('title', user.name + ': ' + i18n(`OWNERSHIP.${ownership}`)));
+                        const userDiv = document.createElement('div');
+                        userDiv.style.backgroundColor = user.color;
+                        userDiv.innerHTML = user.name[0];
+                        userDiv.title = user.name + ': ' + i18n(`OWNERSHIP.${ownership}`);
+                        permissions.appendChild(userDiv);
                     }
                 }
-                $('h4', this).append(permissions);
+                
+                const h4Element = journalElement.querySelector('h4');
+                if (h4Element) {
+                    h4Element.appendChild(permissions);
+                }
             }
         });
     }
@@ -3396,7 +3514,7 @@ export class MonksEnhancedJournal {
 
         if (noWall.length == 0)
             return { x: template.x - hw, y: template.y - hh };
-        
+
         // find one without a token
         let noTokens = noWall.filter(p => {
             return !tokenCollide(p);
@@ -3448,7 +3566,7 @@ export class MonksEnhancedJournal {
 
     static notify(data) {
         if (game.user.isGM) {
-            ui.notifications.info(format("MonksEnhancedJournal.msg.ActorRequestedItem", { actor: data.actor, item: data.item}));
+            ui.notifications.info(format("MonksEnhancedJournal.msg.ActorRequestedItem", { actor: data.actor, item: data.item }));
         }
     }
 
@@ -3479,8 +3597,11 @@ export class MonksEnhancedJournal {
     static async acceptItem(status) {
         let message = this;
 
-        let content = $(message.content);
-  
+        // Parse the message content as HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = message.content;
+        let content = tempDiv;
+
         let offered = message.getFlag('monks-enhanced-journal', 'offered');
         let approved = message.getFlag('monks-enhanced-journal', 'approved');
         let accepted = message.getFlag('monks-enhanced-journal', 'accepted');
@@ -3560,10 +3681,21 @@ export class MonksEnhancedJournal {
                     cls.addLog.call(entry, { actor: actor.name, item: item.name, quantity: data.quantity, price: data.sell + " " + data.currency, type: 'purchase' });
                 }
 
-                $('.request-buttons', content).remove();
-                $('input', content).remove();
-                $('.item-quantity span, .item-price span', content).removeClass('player-only').show();
-                $('.card-footer', content).html(msg);
+                // Remove request buttons and inputs
+                content.querySelectorAll('.request-buttons').forEach(el => el.remove());
+                content.querySelectorAll('input').forEach(el => el.remove());
+                
+                // Update item quantity and price display
+                content.querySelectorAll('.item-quantity span, .item-price span').forEach(el => {
+                    el.classList.remove('player-only');
+                    el.style.display = '';
+                });
+                
+                // Update card footer
+                const cardFooter = content.querySelector('.card-footer');
+                if (cardFooter) {
+                    cardFooter.innerHTML = msg;
+                }
             } else if (action == "sell") {
                 if (game.user.isGM) {
                     offered = !offered;
@@ -3572,7 +3704,10 @@ export class MonksEnhancedJournal {
                 else
                     approved = !approved;
 
-                $('.card-footer', content).html(`<span class="request-msg">${offered ? i18n("MonksEnhancedJournal.msg.ShopMadeOffer") : i18n("MonksEnhancedJournal.msg.ShopConsideringOffer")}</span>`);
+                const cardFooter = content.querySelector('.card-footer');
+                if (cardFooter) {
+                    cardFooter.innerHTML = `<span class="request-msg">${offered ? i18n("MonksEnhancedJournal.msg.ShopMadeOffer") : i18n("MonksEnhancedJournal.msg.ShopConsideringOffer")}</span>`;
+                }
 
                 if (offered && approved) {
                     accepted = true;
@@ -3628,47 +3763,73 @@ export class MonksEnhancedJournal {
                             sheet.addLog.call(entry, { actor: actor.name, item: actoritem.name, quantity: data.quantity, price: (data.sell * purchaseQty) + " " + data.currency, type: 'sell' });
                         }
 
-                        $('input', content).remove();
-                        $('.item-quantity span, .item-price span', content).removeClass('player-only').show();
-                        $('.request-buttons', content).remove();
-                        $('input', content).remove();
-                        $('.item-quantity span, .item-price span', content).removeClass('player-only').show();
-                        $('.card-footer', content).html(`<span class="request-msg"><i class="fas fa-check"></i> ${i18n("MonksEnhancedJournal.msg.SoldToShop")}</span>`);
+                        // Clean up UI elements
+                        content.querySelectorAll('input').forEach(el => el.remove());
+                        content.querySelectorAll('.item-quantity span, .item-price span').forEach(el => {
+                            el.classList.remove('player-only');
+                            el.style.display = '';
+                        });
+                        content.querySelectorAll('.request-buttons').forEach(el => el.remove());
+                        
+                        // Update card footer with success message
+                        const cardFooterElement = content.querySelector('.card-footer');
+                        if (cardFooterElement) {
+                            cardFooterElement.innerHTML = `<span class="request-msg"><i class="fas fa-check"></i> ${i18n("MonksEnhancedJournal.msg.SoldToShop")}</span>`;
+                        }
                     }
                 }
             }
         } else {
             accepted = false;
-            $('.request-buttons', content).remove();
-            $('input', content).remove();
-            $('.item-quantity span, .item-price span', content).removeClass('player-only').show();
-            $('.card-footer', content).html(`<span class="request-msg"><i class="fas fa-times"></i> ${format("MonksEnhancedJournal.msg.SaleHasBeenAction", { verb: (status == 'reject' ? i18n("MonksEnhancedJournal.Rejected").toLowerCase() : i18n("MonksEnhancedJournal.Cancelled").toLowerCase())})}</span>`);
+            
+            // Remove UI elements for rejection/cancellation
+            content.querySelectorAll('.request-buttons').forEach(el => el.remove());
+            content.querySelectorAll('input').forEach(el => el.remove());
+            content.querySelectorAll('.item-quantity span, .item-price span').forEach(el => {
+                el.classList.remove('player-only');
+                el.style.display = '';
+            });
+            
+            // Update card footer with rejection/cancellation message
+            const cardFooterElement = content.querySelector('.card-footer');
+            if (cardFooterElement) {
+                cardFooterElement.innerHTML = `<span class="request-msg"><i class="fas fa-times"></i> ${format("MonksEnhancedJournal.msg.SaleHasBeenAction", { verb: (status == 'reject' ? i18n("MonksEnhancedJournal.Rejected").toLowerCase() : i18n("MonksEnhancedJournal.Cancelled").toLowerCase()) })}</span>`;
+            }
         }
 
-        message.update({ content: content[0].outerHTML, flags: { 'monks-enhanced-journal': { accepted: !!accepted, offered: !!offered, approved: !!approved } } });
+        message.update({ content: content.innerHTML, flags: { 'monks-enhanced-journal': { accepted: !!accepted, offered: !!offered, approved: !!approved } } });
     }
 
     static updateSale(event) {
         let message = this;
 
-        let content = $(message.content);
-        let id = $(event.currentTarget).closest('li').attr('data-id');
+        // Parse the message content as HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = message.content;
+        let content = tempDiv;
+        let id = event.currentTarget.closest('li').getAttribute('data-id');
 
         let items = foundry.utils.duplicate(message.getFlag('monks-enhanced-journal', 'items') || []);
         let item = items.find(i => i._id == id);
         if (item == undefined)
             return;
 
-        let html = $(event.currentTarget).closest('ol.item-list');
+        let html = event.currentTarget.closest('ol.item-list');
 
-        let quantity = parseInt($(`li[data-id="${id}"] input[name="flags.monks-enhanced-journal.quantity"]`, html).val());
+        let quantityInput = html.querySelector(`li[data-id="${id}"] input[name="flags.monks-enhanced-journal.quantity"]`);
+        let quantity = parseInt(quantityInput ? quantityInput.value : 0);
         foundry.utils.setProperty(item, "flags.monks-enhanced-journal.quantity", quantity);
-        $(`li[data-id="${id}"] .item-quantity span`, content).html(quantity);
+        
+        const quantitySpan = content.querySelector(`li[data-id="${id}"] .item-quantity span`);
+        if (quantitySpan) {
+            quantitySpan.innerHTML = quantity;
+        }
 
-        if ($(`li[data-id="${id}"] input[name="flags.monks-enhanced-journal.sell"]`, html).length) {
+        const sellInput = html.querySelector(`li[data-id="${id}"] input[name="flags.monks-enhanced-journal.sell"]`);
+        if (sellInput) {
             let data = foundry.utils.getProperty(item, "flags.monks-enhanced-journal");
 
-            let sell = $(`li[data-id="${id}"] input[name="flags.monks-enhanced-journal.sell"]`, html).val();
+            let sell = sellInput.value;
             let price = MEJHelpers.getPrice(sell);
 
             data.sell = price.value;
@@ -3677,13 +3838,23 @@ export class MonksEnhancedJournal {
 
             foundry.utils.setProperty(item, "flags.monks-enhanced-journal", data);
 
-            $(`li[data-id="${id}"] input[name="sell"]`, html).val(data.sell + ' ' + price.currency);
+            const sellValueInput = html.querySelector(`li[data-id="${id}"] input[name="sell"]`);
+            if (sellValueInput) {
+                sellValueInput.value = data.sell + ' ' + price.currency;
+            }
 
-            $(`li[data-id="${id}"] .item-price span`, content).html(data.sell + ' ' + price.currency);
-            $(`li[data-id="${id}"] .item-total span`, content).html(data.total + ' ' + price.currency);
+            const priceSpan = content.querySelector(`li[data-id="${id}"] .item-price span`);
+            if (priceSpan) {
+                priceSpan.innerHTML = data.sell + ' ' + price.currency;
+            }
+            
+            const totalSpan = content.querySelector(`li[data-id="${id}"] .item-total span`);
+            if (totalSpan) {
+                totalSpan.innerHTML = data.total + ' ' + price.currency;
+            }
         }
 
-        message.update({ content: content[0].outerHTML, flags: { 'monks-enhanced-journal': { items: items } } });
+        message.update({ content: content.innerHTML, flags: { 'monks-enhanced-journal': { items: items } } });
     }
 
     static async openRequestItem(type, event) {
@@ -3714,13 +3885,13 @@ export class MonksEnhancedJournal {
                 }
             }
         } else if (type == 'item') {
-            let li = $(event.currentTarget).closest('li')[0];
+            let li = event.currentTarget.closest('li');
             if (li.dataset.uuid)
                 document = await fromUuid(li.dataset.uuid);
             else {
                 let items = this.getFlag('monks-enhanced-journal', 'items') || [];
                 let itemData = items.find(i => i._id == li.dataset.id);
-                document= new CONFIG.Item.documentClass(itemData);
+                document = new CONFIG.Item.documentClass(itemData);
             }
         }
 
@@ -3766,10 +3937,29 @@ export class MonksEnhancedJournal {
         function selectItem(event) {
             event.preventDefault();
             event.stopPropagation();
-            $(`[name="${documentId}"]`, html).val(this.id);
-            $('> div > span', ctrl.next()).html(this.name);
-            $('.journal-list.open').removeClass('open');
-            $(event.currentTarget).addClass('selected').siblings('.selected').removeClass('selected');
+            
+            // Update form input value
+            const inputElement = html.querySelector(`[name="${documentId}"]`);
+            if (inputElement) {
+                inputElement.value = this.id;
+            }
+            
+            // Update display text
+            const displaySpan = ctrl.next().querySelector('div > span');
+            if (displaySpan) {
+                displaySpan.innerHTML = this.name;
+            }
+            
+            // Close open lists and update selection
+            html.querySelectorAll('.journal-list.open').forEach(el => el.classList.remove('open'));
+            
+            // Update selection state
+            const currentTarget = event.currentTarget;
+            currentTarget.classList.add('selected');
+            currentTarget.parentElement.querySelectorAll('.selected').forEach(el => {
+                if (el !== currentTarget) el.classList.remove('selected');
+            });
+            
             if (fn) fn(this.id, this.name);
         }
 
@@ -3785,6 +3975,7 @@ export class MonksEnhancedJournal {
             return a.sort - b.sort;
         }
 
+        // TODO: Convert complex jQuery DOM manipulation to vanilla JS for v13+ compatibility
         function getFolders(folders) {
             return folders.sort((a, b) => { return a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0; }).map(f => {
                 let sort = f.sorting === "a" ? _sortAlphabetical : _sortStandard;
@@ -3799,6 +3990,7 @@ export class MonksEnhancedJournal {
             });
         }
 
+        // TODO: Convert remaining complex jQuery DOM creation to vanilla JS for v13+ compatibility
         let list = $('<ul>')
             .addClass('journal-list')
             .append($('<li>').addClass('journal-item flexrow').toggleClass('selected', !id).attr('id', '').html($('<div>').addClass('journal-title').html('')).click(selectItem.bind({ id: '', name: '' })))
@@ -3808,7 +4000,11 @@ export class MonksEnhancedJournal {
                 .sort(_sortStandard)
                 .map(j => { return $('<li>').addClass('journal-item').attr('id', j.id).html($('<div>').addClass('journal-title').html(j.name)).click(selectItem.bind(j)); }));
 
-        $(html).click(function () { list.removeClass('open') });
+        // TODO: Convert complex jQuery DOM creation to vanilla JS for v13+ compatibility
+        // For now, keeping jQuery structure but converting simple operations
+        html.addEventListener('click', function () { 
+            if (list && list.removeClass) list.removeClass('open'); 
+        });
 
         return $('<div>')
             .addClass('journal-select')
@@ -3817,7 +4013,12 @@ export class MonksEnhancedJournal {
             .append(list)
             //.focus(function () { list.addClass('open') })
             //.blur(function () { list.removeClass('open') })
-            .click(function (evt) { $('.journal-list', html).removeClass('open'); list.toggleClass('open'); evt.preventDefault(); evt.stopPropagation(); });
+            .click(function (evt) { 
+                html.querySelectorAll('.journal-list').forEach(el => el.classList.remove('open')); 
+                if (list && list.toggleClass) list.toggleClass('open'); 
+                evt.preventDefault(); 
+                evt.stopPropagation(); 
+            });
     }
 
     static async lootEntryListing(ctrl, html, collection = game.journal, uuid) {
@@ -3825,13 +4026,31 @@ export class MonksEnhancedJournal {
             event.preventDefault();
             event.stopPropagation();
             let id = event.currentTarget.dataset.uuid;
-            $(`[name="monks-enhanced-journal.loot-entity"]`, html).val(id).change();
+            
+            // Update form input value and trigger change event
+            const inputElement = html.querySelector('[name="monks-enhanced-journal.loot-entity"]');
+            if (inputElement) {
+                inputElement.value = id;
+                inputElement.dispatchEvent(new Event('change'));
+            }
 
             let name = await getEntityName(id);
 
-            $('.journal-select-text', ctrl.next()).html(name);
-            $('.journal-list.open').removeClass('open');
-            $(event.currentTarget).addClass('selected').siblings('.selected').removeClass('selected');
+            // Update display text
+            const selectTextElement = ctrl.next().querySelector('.journal-select-text');
+            if (selectTextElement) {
+                selectTextElement.innerHTML = name;
+            }
+            
+            // Close open lists and update selection
+            html.querySelectorAll('.journal-list.open').forEach(el => el.classList.remove('open'));
+            
+            // Update selection state
+            const currentTarget = event.currentTarget;
+            currentTarget.classList.add('selected');
+            currentTarget.parentElement.querySelectorAll('.selected').forEach(el => {
+                if (el !== currentTarget) el.classList.remove('selected');
+            });
         }
 
         async function getEntityName(id) {
@@ -3872,7 +4091,7 @@ export class MonksEnhancedJournal {
                     .addClass('subfolder')
                     .append(getFolders(folder?.children?.map(c => c.folder)))
                     .append(getEntries(folder.uuid, folder.documents || folder.contents)))
-               .click(function (event) { event.preventDefault(); event.stopPropagation(); $(this).toggleClass('collapse'); });
+                .click(function (event) { event.preventDefault(); event.stopPropagation(); $(this).toggleClass('collapse'); });
         }
 
         function getFolders(folders) {
@@ -3886,7 +4105,10 @@ export class MonksEnhancedJournal {
             .append(getFolders(collection.directory.folders.filter(f => f.folder == null)))
             .append(getEntries(null, collection.contents.filter(j => j.folder == null)));
 
-        $(html).click(function () { list.removeClass('open') });
+        // TODO: Convert complex jQuery DOM creation to vanilla JS for v13+ compatibility
+        html.addEventListener('click', function () { 
+            if (list && list.removeClass) list.removeClass('open'); 
+        });
 
         let name = await getEntityName(uuid);
 
@@ -3895,7 +4117,12 @@ export class MonksEnhancedJournal {
             .attr('tabindex', '0')
             .append($('<div>').addClass('flexrow').css({ font: ctrl.css('font') }).append($('<span>').addClass("journal-select-text").html(name)).append($('<i>').addClass('fas fa-chevron-down')))
             .append(list)
-            .click(function (evt) { $('.journal-list', html).removeClass('open'); list.toggleClass('open'); evt.preventDefault(); evt.stopPropagation(); });
+            .click(function (evt) { 
+                html.querySelectorAll('.journal-list').forEach(el => el.classList.remove('open')); 
+                if (list && list.toggleClass) list.toggleClass('open'); 
+                evt.preventDefault(); 
+                evt.stopPropagation(); 
+            });
     }
 
     static noteIcons(ctrl, html, value) {
@@ -4164,37 +4391,54 @@ export class MonksEnhancedJournal {
     }
 }
 
-Hooks.on("renderJournalDirectory", async (app, html, options) => {
+Hooks.on("renderJournalDirectory", async (app, element, options) => {
     //add journal indicators
     //log('rendering journal directory', app, html, options);
-    if (MonksEnhancedJournal.journal) {
+    if (MonksEnhancedJournal.journal && MonksEnhancedJournal.journal.rendered) {
         let jdir = await MonksEnhancedJournal.journal.renderDirectory();
-        MonksEnhancedJournal.updateDirectory(jdir, false);
+        if (jdir) {
+            MonksEnhancedJournal.updateDirectory(jdir, false);
+        }
     }
 
-    MonksEnhancedJournal.updateDirectory(html, true);
+    MonksEnhancedJournal.updateDirectory(element, true);
 });
 
-Hooks.on("renderSettingsConfig", (app, html, data) => {
-    $('[name="monks-enhanced-journal.loot-sheet"]', html).on('change', async () => {
-        let sheet = $('[name="monks-enhanced-journal.loot-sheet"]', html).val();
+Hooks.on("renderSettingsConfig", (app, element, data) => {
+    const lootSheetSelect = element.querySelector('[name="monks-enhanced-journal.loot-sheet"]');
+    if (lootSheetSelect) {
+        const changeHandler = async () => {
+            let sheet = lootSheetSelect.value;
 
-        let entityid = setting('loot-entity');
-        let ctrl = $('[name="monks-enhanced-journal.loot-entity"]', html);
-        if (ctrl.next().hasClass("journal-select"))
-            ctrl.next().remove();
-        let list = await MonksEnhancedJournal.lootEntryListing(ctrl, html, (sheet == "monks-enhanced-journal" ? game.journal : game.actors), entityid);
-        list.insertAfter(ctrl);
-        ctrl.hide();
-    }).change();
+            let entityid = setting('loot-entity');
+            let ctrl = element.querySelector('[name="monks-enhanced-journal.loot-entity"]');
+            if (ctrl.nextElementSibling?.classList.contains("journal-select"))
+                ctrl.nextElementSibling.remove();
+            let list = await MonksEnhancedJournal.lootEntryListing(ctrl, element, (sheet == "monks-enhanced-journal" ? game.journal : game.actors), entityid);
+            ctrl.parentNode.insertBefore(list, ctrl.nextSibling);
+            ctrl.style.display = 'none';
+        };
+        lootSheetSelect.addEventListener('change', changeHandler);
+        changeHandler(); // Trigger initial change
+    }
 
-    $('[name="monks-enhanced-journal.loot-entity"]', html).on('change', async () => {
-        let entity = $('[name="monks-enhanced-journal.loot-entity"]', html).val();
+    const lootEntitySelect = element.querySelector('[name="monks-enhanced-journal.loot-entity"]');
+    if (lootEntitySelect) {
+        const changeHandler = async () => {
+            let entity = lootEntitySelect.value;
+            const formGroup = element.querySelector('[name="monks-enhanced-journal.loot-name"]')?.closest('.form-group');
+            if (formGroup) {
+                formGroup.style.display = (entity.startsWith("Folder") || !entity) ? '' : 'none';
+            }
+        };
+        lootEntitySelect.addEventListener('change', changeHandler);
+        changeHandler(); // Trigger initial change
+    }
 
-        $('[name="monks-enhanced-journal.loot-name"]', html).closest('.form-group').toggle(entity.startsWith("Folder") || !entity);
-    }).change();
-
-    $('[name="monks-enhanced-journal.loot-name"]', html).val(i18n($('[name="monks-enhanced-journal.loot-name"]', html).val()));
+    const lootNameInput = element.querySelector('[name="monks-enhanced-journal.loot-name"]');
+    if (lootNameInput) {
+        lootNameInput.value = i18n(lootNameInput.value);
+    }
 });
 
 Hooks.once("init", async function () {
@@ -4271,7 +4515,7 @@ Hooks.on("updateJournalEntryPage", (document, data, options, userId) => {
         MonksEnhancedJournal.refreshObjectives(true);
 
     if (data.name && type && document.parent.pages.size == 1) {
-        document.parent.update({name: data.name});
+        document.parent.update({ name: data.name });
     }
 
     if (foundry.utils.getProperty(data, "flags.monks-enhanced-journal.status") != undefined) {
@@ -4294,23 +4538,21 @@ Hooks.on("updateJournalEntryPage", (document, data, options, userId) => {
             (data.text?.content != undefined ||
                 data.ownership != undefined ||
                 renderUpdate ||
-            foundry.utils.getProperty(data, "flags.core.sheetClass") != undefined))
-        {
+                foundry.utils.getProperty(data, "flags.core.sheetClass") != undefined)) {
             MonksEnhancedJournal.journal.render(MonksEnhancedJournal.journal.tempOwnership, { reload: true, focus: options?.focus !== false });
         }
     } else {
         if (data.content != undefined ||
             data.ownership != undefined ||
             renderUpdate ||
-            foundry.utils.getProperty(data, "flags.core.sheetClass") != undefined)
-        {
+            foundry.utils.getProperty(data, "flags.core.sheetClass") != undefined) {
             if (document._sheet && document._sheet.rendered)
                 document._sheet.render(true, { reload: true });
         }
     }
 });
 
-Hooks.on("deleteJournalEntry", (document, html, userId) => {
+Hooks.on("deleteJournalEntry", (document, element, userId) => {
     if (MonksEnhancedJournal.journal) {
         MonksEnhancedJournal.journal.deleteEntity(document.uuid);
         if (document.flags['monks-enhanced-journal']?.type == 'quest' && ui.controls.activeControl == 'notes' && setting('show-objectives'))
@@ -4436,11 +4678,14 @@ Hooks.on("renderFolderConfig", (app, html, options) => {
     $(html).css({height: $(html).height() + 30});
 });*/
 
-Hooks.on('renderNoteConfig', (app, html, data) => {
-    let ctrl = $('select[name="entryId"]', html);
+Hooks.on('renderNoteConfig', (app, element, data) => {
+    let ctrl = element.querySelector('select[name="entryId"]');
 
-    MonksEnhancedJournal.journalListing(ctrl, html, app.object.entryId, data.entry.name, "entryId", (id, name) => {
-        $('[name="text"]', html).attr("placeholder", name);
+    MonksEnhancedJournal.journalListing(ctrl, element, app.object.entryId, data.entry.name, "entryId", (id, name) => {
+        const textInput = element.querySelector('[name="text"]');
+        if (textInput) {
+            textInput.setAttribute("placeholder", name);
+        }
 
         let mejSheet = false;
         let journal = game.journal.get(id);
@@ -4457,31 +4702,86 @@ Hooks.on('renderNoteConfig', (app, html, data) => {
         app._updatePageList();
 
         // check if the page list and anchor should be shown
-        $('select[name="pageId"]', html).closest('.form-group').toggle(!mejSheet);
-        $('input[name="flags.monks-enhanced-journal.anchor"]', html).closest('.form-group').toggle(!mejSheet);
+        const pageIdSelect = element.querySelector('select[name="pageId"]');
+        if (pageIdSelect) {
+            const pageIdGroup = pageIdSelect.closest('.form-group');
+            if (pageIdGroup) {
+                pageIdGroup.style.display = mejSheet ? 'none' : '';
+            }
+        }
+        
+        const anchorInput = element.querySelector('input[name="flags.monks-enhanced-journal.anchor"]');
+        if (anchorInput) {
+            const anchorGroup = anchorInput.closest('.form-group');
+            if (anchorGroup) {
+                anchorGroup.style.display = mejSheet ? 'none' : '';
+            }
+        }
 
         app.setPosition({ height: 'auto' });
     }).insertAfter(ctrl);
-    ctrl.hide();
+    ctrl.style.display = 'none';
 
-    ctrl = $('select[name="icon.selected"]', html);
+    ctrl = element.querySelector('select[name="icon.selected"]');
 
-    MonksEnhancedJournal.noteIcons(ctrl, html, app.object.texture.src).insertAfter(ctrl);
-    ctrl.hide();
+    MonksEnhancedJournal.noteIcons(ctrl, element, app.object.texture.src).insertAfter(ctrl);
+    ctrl.style.display = 'none';
 
-    $('<div>').addClass('form-group')
-        .append($('<label>').html(i18n("MonksEnhancedJournal.ChatBubble")))
-        .append(
-            $('<div>').addClass('form-fields')
-                .append($('<input>').attr('type', 'checkbox').attr('name', 'flags.monks-enhanced-journal.chatbubble').prop('checked', app.object.flags['monks-enhanced-journal']?.chatbubble))
-    ).insertAfter($('select[name="textAnchor"]', html).closest('.form-group'));
+    // Create Chat Bubble form group
+    const chatBubbleGroup = document.createElement('div');
+    chatBubbleGroup.className = 'form-group';
+    
+    const chatBubbleLabel = document.createElement('label');
+    chatBubbleLabel.innerHTML = i18n("MonksEnhancedJournal.ChatBubble");
+    
+    const chatBubbleFields = document.createElement('div');
+    chatBubbleFields.className = 'form-fields';
+    
+    const chatBubbleInput = document.createElement('input');
+    chatBubbleInput.type = 'checkbox';
+    chatBubbleInput.name = 'flags.monks-enhanced-journal.chatbubble';
+    chatBubbleInput.checked = app.object.flags['monks-enhanced-journal']?.chatbubble || false;
+    
+    chatBubbleFields.appendChild(chatBubbleInput);
+    chatBubbleGroup.appendChild(chatBubbleLabel);
+    chatBubbleGroup.appendChild(chatBubbleFields);
+    
+    // Insert after textAnchor select group
+    const textAnchorSelect = element.querySelector('select[name="textAnchor"]');
+    if (textAnchorSelect) {
+        const textAnchorGroup = textAnchorSelect.closest('.form-group');
+        if (textAnchorGroup && textAnchorGroup.parentNode) {
+            textAnchorGroup.parentNode.insertBefore(chatBubbleGroup, textAnchorGroup.nextSibling);
+        }
+    }
 
-    $('<div>').addClass('form-group')
-        .append($('<label>').html(i18n("MonksEnhancedJournal.PageAnchor")))
-        .append(
-            $('<div>').addClass('form-fields')
-                .append($('<input>').attr('type', 'text').attr('name', 'flags.monks-enhanced-journal.anchor').val(app.object.flags['monks-enhanced-journal']?.anchor))
-    ).insertAfter($('select[name="pageId"]', html).closest('.form-group'));
+    // Create Page Anchor form group
+    const pageAnchorGroup = document.createElement('div');
+    pageAnchorGroup.className = 'form-group';
+    
+    const pageAnchorLabel = document.createElement('label');
+    pageAnchorLabel.innerHTML = i18n("MonksEnhancedJournal.PageAnchor");
+    
+    const pageAnchorFields = document.createElement('div');
+    pageAnchorFields.className = 'form-fields';
+    
+    const pageAnchorInput = document.createElement('input');
+    pageAnchorInput.type = 'text';
+    pageAnchorInput.name = 'flags.monks-enhanced-journal.anchor';
+    pageAnchorInput.value = app.object.flags['monks-enhanced-journal']?.anchor || '';
+    
+    pageAnchorFields.appendChild(pageAnchorInput);
+    pageAnchorGroup.appendChild(pageAnchorLabel);
+    pageAnchorGroup.appendChild(pageAnchorFields);
+    
+    // Insert after pageId select group
+    const pageIdSelect = element.querySelector('select[name="pageId"]');
+    if (pageIdSelect) {
+        const pageIdGroup = pageIdSelect.closest('.form-group');
+        if (pageIdGroup && pageIdGroup.parentNode) {
+            pageIdGroup.parentNode.insertBefore(pageAnchorGroup, pageIdGroup.nextSibling);
+        }
+    }
 
     let mejSheet = false;
     let journal = data.entry;
@@ -4494,18 +4794,43 @@ Hooks.on('renderNoteConfig', (app, html, data) => {
         }
     }
 
-    $('select[name="pageId"]', html).closest('.form-group').toggle(!mejSheet);
-    $('input[name="flags.monks-enhanced-journal.anchor"]', html).closest('.form-group').toggle(!mejSheet);
+    // Toggle visibility of page ID and anchor form groups
+    const finalPageIdSelect = element.querySelector('select[name="pageId"]');
+    if (finalPageIdSelect) {
+        const finalPageIdGroup = finalPageIdSelect.closest('.form-group');
+        if (finalPageIdGroup) {
+            finalPageIdGroup.style.display = mejSheet ? 'none' : '';
+        }
+    }
+    
+    const finalAnchorInput = element.querySelector('input[name="flags.monks-enhanced-journal.anchor"]');
+    if (finalAnchorInput) {
+        const finalAnchorGroup = finalAnchorInput.closest('.form-group');
+        if (finalAnchorGroup) {
+            finalAnchorGroup.style.display = mejSheet ? 'none' : '';
+        }
+    }
 
     app.setPosition({ height: 'auto' });
 });
 
-Hooks.on("renderTokenConfig", (app, html, data) => {
+Hooks.on("renderTokenConfig", (app, element, data) => {
     if (game.user.isGM) {
-        let ctrl = $('<input>').attr('type', 'text').attr('name', 'flags.monks-enhanced-journal.chatbubble').val(foundry.utils.getProperty(data, 'object.flags.monks-enhanced-journal.chatbubble'));
-        let group = $('<div>').addClass('form-group')
-            .append($('<label>').html(i18n("MonksEnhancedJournal.TokenDialogJournalEntry")))
-            .append(ctrl);
+        const ctrl = document.createElement("input");
+        ctrl.type = "text"
+        ctrl.name = "flags.monks-enhanced-journal.chatbubble"
+        ctrl.value = foundry.utils.getProperty(
+            data,
+            "object.flags.monks-enhanced-journal.chatbubble"
+        );
+
+        const group = document.createElement("div");
+        group.classList.add("form-group")
+
+        const label = document.createElement("label");
+        label.textContent = i18n("MonksEnhancedJournal.TokenDialogJournalEntry")
+
+        group.append(label, ctrl)
 
         let journalId = app.object.flags['monks-enhanced-journal']?.chatbubble;
         let journal = game.journal.get(journalId);
@@ -4513,25 +4838,28 @@ Hooks.on("renderTokenConfig", (app, html, data) => {
         let journalSelect = MonksEnhancedJournal.journalListing(ctrl, group, journal?.id, journal?.name, 'flags.monks-enhanced-journal.chatbubble');
         ctrl.hide();
         group.append(journalSelect);
+        const select = group.querySelector(".journal-select")
+        const ul = group.querySelector(".journal-list")
+        if (ul) app.element.appendChild(ul);
 
-        let select = $('.journal-select', group);
-        let ul = $('.journal-list', group).appendTo(app.element);
         window.setTimeout(function () {
             ul.css({ left: select.position().left, top: (select.position().top + select.height() + 1), width: select.outerWidth() });
         }, 100);
 
-        $('div[data-tab="character"]', html).append(group);
+        const tab = element.querySelector("div[data-tab='character']")
+        if (tab) tab.appendChild(group)
 
-        app.setPosition({height: 'auto'});
+        app.setPosition({ height: 'auto' });
     }
 });
 
-Hooks.on("renderSceneConfig", (app, html, data) => {
+Hooks.on("renderSceneConfig", (app, element, data) => {
     if (game.user.isGM) {
-        let ctrl = $('select[name="journal"]', html);
+        const ctrl = element.querySelector('select[name="journal"]')
+
         let journal = app.object.journal;
 
-        MonksEnhancedJournal.journalListing(ctrl, html, journal?.id, journal?.name, 'journal', (id, name) => {
+        MonksEnhancedJournal.journalListing(ctrl, element, journal?.id, journal?.name, 'journal', (id, name) => {
             let mejSheet = false;
             let journal = game.journal.get(id);
             if (journal?.pages?.size == 1 && (!!foundry.utils.getProperty(journal?.pages?.contents[0], "flags.monks-enhanced-journal.type") || !!foundry.utils.getProperty(journal, "flags.monks-enhanced-journal.type"))) {
@@ -4545,10 +4873,9 @@ Hooks.on("renderSceneConfig", (app, html, data) => {
 
             // refresh page list
             app._onChangeJournal({ preventDefault: () => { }, currentTarget: { value: id } });
-
-            // check if the page list and anchor should be shown
-            $('select[name="journalEntryPage"]', html).closest('.form-group').toggle(!mejSheet);
-
+            const select = element.querySelector('select[name="journalEntryPage"]');
+            const formGroup = select?.closest('.form-group');
+            if (formGroup) formGroup.style.display = mejSheet ? 'none' : '';
             app.setPosition({ height: 'auto' });
         }).insertAfter(ctrl);
         ctrl.hide();
@@ -4559,43 +4886,90 @@ Hooks.on("preDocumentSheetRegistrarInit", (settings) => {
     settings["JournalEntry"] = true;
 });
 
-Hooks.on("renderChatMessage", (message, html, data) => {
+Hooks.on("renderChatMessage", (message, element, data) => {
     if (message.flags['monks-enhanced-journal']) {
         if (!game.user.isGM)
-            html.find(".gm-only").remove();
+            element.querySelectorAll(".gm-only").forEach(el => el.remove());
         if (game.user.isGM)
-            html.find(".player-only").hide();
-
-        $('.request-accept', html).click(MonksEnhancedJournal.acceptItem.bind(message, 'accept'));
-        $('.request-reject', html).click(MonksEnhancedJournal.acceptItem.bind(message, game.user.isGM ? 'reject' : 'cancel'));
+            element.querySelectorAll(".player-only").forEach(el => el.style.display = 'none');
+        const requestAccept = element.querySelector(".request-accept")
+        if (requestAccept) requestAccept.addEventListener('click', MonksEnhancedJournal.acceptItem.bind(message, 'accept'))
+        const requestReject = element.querySelector(".request-reject")
+        if (requestReject) requestReject.addEventListener('click', MonksEnhancedJournal.acceptItem.bind(message, game.user.isGM ? 'reject' : 'cancel'))
+        // $('.request-accept', html).click(MonksEnhancedJournal.acceptItem.bind(message, 'accept'));
+        // $('.request-reject', html).click(MonksEnhancedJournal.acceptItem.bind(message, game.user.isGM ? 'reject' : 'cancel'));
+        
         if (message.getFlag('monks-enhanced-journal', 'action') == "sell") {
             let offered = message.getFlag('monks-enhanced-journal', 'offered');
             let approved = message.getFlag('monks-enhanced-journal', 'approved');
 
-            $('.request-accept', html).toggleClass('active', (game.user.isGM ? !!offered : !!approved)).prop('disabled', !game.user.isGM && !offered);
+            if (requestAccept) {
+                // Toggle 'active' class based on conditions
+                const shouldBeActive = game.user.isGM ? !!offered : !!approved;
+                if (shouldBeActive) {
+                    requestAccept.classList.add('active');
+                } else {
+                    requestAccept.classList.remove('active');
+                }
+                
+                // Set disabled property
+                requestAccept.disabled = !game.user.isGM && !offered;
+            }
         }
 
-        $('input[name="flags.monks-enhanced-journal.quantity"]', html).change(MonksEnhancedJournal.updateSale.bind(message));
-        $('input[name="flags.monks-enhanced-journal.sell"]', html).change(MonksEnhancedJournal.updateSale.bind(message));
+        // Add change event listeners for quantity and sell inputs
+        element.querySelectorAll('input[name="flags.monks-enhanced-journal.quantity"]').forEach(input => {
+            input.addEventListener('change', MonksEnhancedJournal.updateSale.bind(message));
+        });
+        element.querySelectorAll('input[name="flags.monks-enhanced-journal.sell"]').forEach(input => {
+            input.addEventListener('change', MonksEnhancedJournal.updateSale.bind(message));
+        });
 
         let items = message.getFlag('monks-enhanced-journal', 'items') || [];
         for (let item of items) {
-            $(`li[data-id="${item._id}"] input[name="flags.monks-enhanced-journal.quantity"]`, html).val(foundry.utils.getProperty(item, "flags.monks-enhanced-journal.quantity"));
-            $(`li[data-id="${item._id}"] input[name="flags.monks-enhanced-journal.sell"]`, html).val(foundry.utils.getProperty(item, "flags.monks-enhanced-journal.sell") + " " + foundry.utils.getProperty(item, "flags.monks-enhanced-journal.currency"));
+            // Update quantity input value
+            const quantityInput = element.querySelector(`li[data-id="${item._id}"] input[name="flags.monks-enhanced-journal.quantity"]`);
+            if (quantityInput) {
+                quantityInput.value = foundry.utils.getProperty(item, "flags.monks-enhanced-journal.quantity") || '';
+            }
+            
+            // Update sell input value
+            const sellInput = element.querySelector(`li[data-id="${item._id}"] input[name="flags.monks-enhanced-journal.sell"]`);
+            if (sellInput) {
+                const sellValue = foundry.utils.getProperty(item, "flags.monks-enhanced-journal.sell") || '';
+                const currency = foundry.utils.getProperty(item, "flags.monks-enhanced-journal.currency") || '';
+                sellInput.value = sellValue + " " + currency;
+            }
         }
 
-        $('.chat-actor-icon', html).click(MonksEnhancedJournal.openRequestItem.bind(message, 'actor')).attr('onerror', "$(this).attr('src', 'icons/svg/mystery-man.svg');");
-        $('.chat-shop-icon', html).click(MonksEnhancedJournal.openRequestItem.bind(message, 'shop')).attr('onerror', "$(this).attr('src', 'modules/monks-enhanced-journal/assets/shop.png');");
-        $('.item-list .item-name .item-image', html).click(MonksEnhancedJournal.openRequestItem.bind(message, 'item'));
-        $('.items-list .item-icon', html).click(MonksEnhancedJournal.openRequestItem.bind(message, 'item'));
+        // Add click event listeners for chat icons and items
+        element.querySelectorAll('.chat-actor-icon').forEach(icon => {
+            icon.addEventListener('click', MonksEnhancedJournal.openRequestItem.bind(message, 'actor'));
+            icon.setAttribute('onerror', "this.src='icons/svg/mystery-man.svg'");
+        });
+        
+        element.querySelectorAll('.chat-shop-icon').forEach(icon => {
+            icon.addEventListener('click', MonksEnhancedJournal.openRequestItem.bind(message, 'shop'));
+            icon.setAttribute('onerror', "this.src='modules/monks-enhanced-journal/assets/shop.png'");
+        });
+        
+        element.querySelectorAll('.item-list .item-name .item-image').forEach(image => {
+            image.addEventListener('click', MonksEnhancedJournal.openRequestItem.bind(message, 'item'));
+        });
+        
+        element.querySelectorAll('.items-list .item-icon').forEach(icon => {
+            icon.addEventListener('click', MonksEnhancedJournal.openRequestItem.bind(message, 'item'));
+        });
     } else if (message.flags['journal-chat-card']) {
-        $('.link-button', html).on("click", async (ev) => {
-            let uuid = ev.currentTarget.dataset.uuid;
-            let entry = await fromUuid(uuid);
-            if (entry) {
-                MonksEnhancedJournal.openJournalEntry(entry);
-            }
-        })
+        element.querySelectorAll('.link-button').forEach(button => {
+            button.addEventListener("click", async (ev) => {
+                let uuid = ev.currentTarget.dataset.uuid;
+                let entry = await fromUuid(uuid);
+                if (entry) {
+                    MonksEnhancedJournal.openJournalEntry(entry);
+                }
+            });
+        });
     }
 });
 
@@ -4603,7 +4977,7 @@ Hooks.on('canvasInit', () => {
     canvas.hud.note = new NoteHUD();
 });
 
-Hooks.on("getActorDirectoryEntryContext", (html, entries) => {
+Hooks.on("getActorDirectoryEntryContext", (element, entries) => {
     entries.push({
         name: i18n("MonksEnhancedJournal.AssignItemsToThisActor"),
         icon: '<i class="fas fa-suitcase"></i>',
@@ -4612,7 +4986,7 @@ Hooks.on("getActorDirectoryEntryContext", (html, entries) => {
         },
         callback: async (li) => {
             await game.settings.set("monks-enhanced-journal", "loot-entity", li.data("entryId"));
-            if (!MonksEnhancedJournal.isLootActor(setting("loot-sheet"))){
+            if (!MonksEnhancedJournal.isLootActor(setting("loot-sheet"))) {
                 if (game.modules.get("lootsheetnpc5e")?.active)
                     await game.settings.set("monks-enhanced-journal", "loot-sheet", "lootsheetnpc5e");
                 else if (game.modules.get("merchantsheetnpc")?.active)
@@ -4625,7 +4999,7 @@ Hooks.on("getActorDirectoryEntryContext", (html, entries) => {
     });
 });
 
-Hooks.on("getJournalDirectoryEntryContext", (html, entries) => {
+Hooks.on("getJournalDirectoryEntryContext", (element, entries) => {
     entries.push({
         name: i18n("MonksEnhancedJournal.AssignItemsToThisLootEntry"),
         icon: '<i class="fas fa-suitcase"></i>',
@@ -4649,9 +5023,14 @@ Hooks.on('getJournalSheetHeaderButtons', (app, actions) => {
 });
 
 Hooks.on("getSceneControlButtons", (controls) => {
+    console.log("Scene Controls:", controls);
     if (setting('show-objectives')) {
-        let noteControls = controls.find(control => control.name === "notes")
-        noteControls.tools.push({
+        let noteControls = Object.values(controls).find(control => {
+            console.log("Checking Control Entrie: ", control.name)
+            return control.name === "notes"
+        })
+        console.log("Note Controls:", noteControls)
+        noteControls.tools.toggledialog = {
             name: "toggledialog",
             title: "MonksEnhancedJournal.toggledialog",
             icon: "fas fa-calendar-day",
@@ -4661,7 +5040,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
                 game.settings.set('monks-enhanced-journal', 'show-dialog', toggled);
                 MonksEnhancedJournal.refreshObjectives();
             }
-        });
+        }
     }
 
     if (setting("show-chatbubble")) {
@@ -4690,38 +5069,77 @@ Hooks.on("updateSetting", (setting, data, options, userid) => {
 
 Hooks.on("polyglot.ready", () => {
     try {
-        let root = $('<div>').attr('id', 'enhanced-journal-fonts').appendTo('body');
+        let root = document.createElement('div');
+        root.id = 'enhanced-journal-fonts';
+        document.body.appendChild(root);
         let alphabets = game.polyglot.languageProvider?.alphabets;
         if (alphabets) {
             for (let [k, v] of Object.entries(alphabets)) {
-                $('<span>').attr('lang', k).css({ font: v }).appendTo(root);
+                let span = document.createElement('span');
+                span.setAttribute('lang', k);
+                span.style.font = v;
+                root.appendChild(span);
             }
         }
     } catch { }
 });
 
-Hooks.on("renderItemSheet", (sheet, html, data) => {
+Hooks.on("renderItemSheet", (sheet, element, data) => {
     //Change the price so we can specify the currency type
     if (data.options?.alterprice == true) {
-        $('input[name="system.price"]', html).attr("name", "flags.monks-enhanced-journal.price").attr('data-dtype', 'String').attr('type', 'text').val(foundry.utils.getProperty(data, "item.flags.monks-enhanced-journal.price"))
+        const priceInput = element.querySelector('input[name="system.price"]');
+        if (priceInput) {
+            priceInput.setAttribute("name", "flags.monks-enhanced-journal.price");
+            priceInput.setAttribute('data-dtype', 'String');
+            priceInput.setAttribute('type', 'text');
+            priceInput.value = foundry.utils.getProperty(data, "item.flags.monks-enhanced-journal.price") || '';
+        }
     }
 
     /*
     if (data.options?.addremaining == true) {
-        let quantityGroup = $('input[name="system.quantity"]', html).closest('.form-group');
-        $('<div>').addClass('form-group')
-            .append($('<label>').html(i18n("MonksEnhancedJournal.Remaining")))
-            .append($('<input>').attr('type', 'text').attr('name', 'flags.monks-enhanced-journal.remaining').attr('data-dtype', 'String').val(foundry.utils.getProperty(data, "item.flags.monks-enhanced-journal.remaining")))
-            .insertAfter(quantityGroup);
+        let quantityGroup = element.querySelector('input[name="system.quantity"]')?.closest('.form-group');
+        const remainingDiv = document.createElement('div');
+        remainingDiv.className = 'form-group';
+        
+        const remainingLabel = document.createElement('label');
+        remainingLabel.innerHTML = i18n("MonksEnhancedJournal.Remaining");
+        
+        const remainingInput = document.createElement('input');
+        remainingInput.type = 'text';
+        remainingInput.name = 'flags.monks-enhanced-journal.remaining';
+        remainingInput.setAttribute('data-dtype', 'String');
+        remainingInput.value = foundry.utils.getProperty(data, "item.flags.monks-enhanced-journal.remaining") || '';
+        
+        remainingDiv.appendChild(remainingLabel);
+        remainingDiv.appendChild(remainingInput);
+        
+        if (quantityGroup && quantityGroup.parentNode) {
+            quantityGroup.parentNode.insertBefore(remainingDiv, quantityGroup.nextSibling);
+        }
     }
     */
 
     if (data.options?.addcost == true) {
-        let priceGroup = $('input[name="system.price"]', html).closest('.form-group');
-        $('<div>').addClass('form-group')
-            .append($('<label>').html(i18n("MonksEnhancedJournal.Cost")))
-            .append($('<input>').attr('type', 'text').attr('name', 'flags.monks-enhanced-journal.cost').attr('data-dtype', 'String').val(foundry.utils.getProperty(data, "item.flags.monks-enhanced-journal.cost")))
-            .insertAfter(priceGroup);
+        const priceGroup = element.querySelector('input[name="system.price"]')?.closest('.form-group');
+        if (priceGroup && priceGroup.parentNode) {
+            const costDiv = document.createElement('div');
+            costDiv.className = 'form-group';
+            
+            const costLabel = document.createElement('label');
+            costLabel.innerHTML = i18n("MonksEnhancedJournal.Cost");
+            
+            const costInput = document.createElement('input');
+            costInput.type = 'text';
+            costInput.name = 'flags.monks-enhanced-journal.cost';
+            costInput.setAttribute('data-dtype', 'String');
+            costInput.value = foundry.utils.getProperty(data, "item.flags.monks-enhanced-journal.cost") || '';
+            
+            costDiv.appendChild(costLabel);
+            costDiv.appendChild(costInput);
+            
+            priceGroup.parentNode.insertBefore(costDiv, priceGroup.nextSibling);
+        }
     }
 });
 
@@ -4743,7 +5161,7 @@ Hooks.on('dragEndObjectiveDisplay', (app) => {
     game.user.setFlag("monks-enhanced-journal", "objectivePos", { left: app.position.left, top: app.position.top, width: app.position.width });
 });
 
-Hooks.on("renderDialog", (dialog, html, data) => {
+Hooks.on("renderDialog", (dialog, element, data) => {
     if (dialog.options.journalentry) {
         const mejTypes = Object.keys(MonksEnhancedJournal.getDocumentTypes());
         const originalTypes = game.documentTypes.JournalEntryPage.filter(t => t !== CONST.BASE_DOCUMENT_TYPE);
@@ -4763,61 +5181,140 @@ Hooks.on("renderDialog", (dialog, html, data) => {
             .filter((t, index, self) => { return self.findIndex(i => i.id == t.id) == index })
             .sort((a, b) => { return a.name.localeCompare(b.name); });
 
-        let select = $("<select>").attr("name", "flags.monks-enhanced-journal.pagetype")
-            .append($('<optgroup>').attr("label", "Adventure Book").append(original.map((t) => { return $('<option>').attr('value', t.id).prop("selected", t.id == "text").html(t.name) })))
-            .append($('<optgroup>').attr("label", "Single Sheet").append(types.map((t) => { return $('<option>').attr('value', t.id).html(t.name) })));
+        // Create select element
+        const select = document.createElement("select");
+        select.name = "flags.monks-enhanced-journal.pagetype";
+
+        // Create Adventure Book optgroup
+        const adventureOptgroup = document.createElement("optgroup");
+        adventureOptgroup.label = "Adventure Book";
+        original.forEach((t) => {
+            const option = document.createElement("option");
+            option.value = t.id;
+            option.selected = t.id === "text";
+            option.innerHTML = t.name;
+            adventureOptgroup.appendChild(option);
+        });
+        select.appendChild(adventureOptgroup);
+
+        // Create Single Sheet optgroup
+        const singleOptgroup = document.createElement("optgroup");
+        singleOptgroup.label = "Single Sheet";
+        types.forEach((t) => {
+            const option = document.createElement("option");
+            option.value = t.id;
+            option.innerHTML = t.name;
+            singleOptgroup.appendChild(option);
+        });
+        select.appendChild(singleOptgroup);
 
         if (game.modules.get("storyteller")?.active) {
-            select.append($('<optgroup>').attr("label", "Storyteller").append(Object.entries(game.StoryTeller.constructor.types).filter(([k, v]) => k != "base").map(([k, v]) => { return $('<option>').attr('value', k).html(v.name); })));
-            $('select[name="type"]', html).parent().parent().remove();
+            const storytellerOptgroup = document.createElement("optgroup");
+            storytellerOptgroup.label = "Storyteller";
+            Object.entries(game.StoryTeller.constructor.types).filter(([k, v]) => k != "base").forEach(([k, v]) => {
+                const option = document.createElement("option");
+                option.value = k;
+                option.innerHTML = v.name;
+                storytellerOptgroup.appendChild(option);
+            });
+            select.appendChild(storytellerOptgroup);
+            
+            const typeSelect = element.querySelector('select[name="type"]');
+            if (typeSelect) {
+                const typeSelectParentParent = typeSelect.closest('.form-group');
+                if (typeSelectParentParent && typeSelectParentParent.parentNode) {
+                    typeSelectParentParent.parentNode.removeChild(typeSelectParentParent);
+                }
+            }
         }
 
-        $('<div>')
-            .addClass("form-group")
-            .append($('<label>').html(i18n("Type")))
-            .append($('<div>')
-                .addClass("form-fields")
-                .append(select))
-            .insertAfter($('[name="name"]', html).closest('.form-group'));
+        // Create form group container
+        const formGroup = document.createElement('div');
+        formGroup.className = 'form-group';
+        
+        const label = document.createElement('label');
+        label.innerHTML = i18n("Type");
+        
+        const formFields = document.createElement('div');
+        formFields.className = 'form-fields';
+        formFields.appendChild(select);
+        
+        formGroup.appendChild(label);
+        formGroup.appendChild(formFields);
+
+        // Insert after name input
+        const nameInput = element.querySelector('[name="name"]');
+        if (nameInput) {
+            const nameGroup = nameInput.closest('.form-group');
+            if (nameGroup && nameGroup.parentNode) {
+                nameGroup.parentNode.insertBefore(formGroup, nameGroup.nextSibling);
+            }
+        }
 
         dialog.setPosition({ height: "auto" });
     } else if (dialog.options.journalentrypage) {
         const types = MonksEnhancedJournal.getTypeLabels();
-        $('select[name="type"] option').each((index, opt) => {
-            if (types[$(opt).attr("value")] != undefined)
-                $(opt).remove();
-        })
+        const typeSelect = element.querySelector('select[name="type"]');
+        if (typeSelect) {
+            const options = typeSelect.querySelectorAll('option');
+            options.forEach((opt) => {
+                if (types[opt.value] !== undefined) {
+                    opt.remove();
+                }
+            });
+        }
     }
 });
 
-Hooks.on("renderJournalSheet", (sheet, html, data) => {
+Hooks.on("renderJournalSheet", (sheet, element, data) => {
     if (sheet._pages) {
         const levels = Object.entries(CONST.DOCUMENT_OWNERSHIP_LEVELS);
         for (let page of sheet._pages) {
             if (page?.numberIcon) {
-                $(`.pages-list li[data-page-id="${page._id}"] .page-number`, html).html(`<i class="fas ${page.numberIcon}"></i>`);
+                const pageNumber = element.querySelector(`.pages-list li[data-page-id="${page._id}"] .page-number`);
+                if (pageNumber) {
+                    pageNumber.innerHTML = `<i class="fas ${page.numberIcon}"></i>`;
+                }
             }
 
             if ((setting('show-permissions') == 'true' || (setting('show-permissions') == 'mej' && sheet.enhancedjournal)) &&
                 game.user.isGM &&
                 (page.ownership.default >= 0 || Object.keys(page.ownership).length > 1)) {
 
-                let permissions = $(`.pages-list li[data-page-id="${page._id}"] .page-heading .page-ownership`, html);
-                if (!permissions.length)
-                    permissions = $("<span>").addClass("page-ownership").appendTo($(`.pages-list li[data-page-id="${page._id}"] .page-heading`, html));
-                permissions.empty();
-
-                if (page.ownership.default >= 0) {
-                    const [ownership] = levels.find(([, level]) => level === page.ownership.default);
-                    permissions.append($('<i>').addClass(page.ownership.default == 0 ? 'fas fa-users-slash' : 'fas fa-users').attr('title', `${i18n("MonksEnhancedJournal.Everyone")}: ${i18n(`OWNERSHIP.${ownership}`)}`));
+                let permissions = element.querySelector(`.pages-list li[data-page-id="${page._id}"] .page-heading .page-ownership`);
+                if (!permissions) {
+                    const pageHeading = element.querySelector(`.pages-list li[data-page-id="${page._id}"] .page-heading`);
+                    if (pageHeading) {
+                        permissions = document.createElement("span");
+                        permissions.className = "page-ownership";
+                        pageHeading.appendChild(permissions);
+                    }
                 }
-                for (let [key, value] of Object.entries(page.ownership)) {
-                    let user = game.users.find(u => {
-                        return u.id == key && !u.isGM;
-                    });
-                    if (user != undefined && value > 0 && value != page.ownership.default) {
-                        const [ownership] = levels.find(([, level]) => level === value);
-                        permissions.append($('<div>').css({ backgroundColor: user.color }).html(user.name[0]).attr('title', user.name + ': ' + i18n(`OWNERSHIP.${ownership}`)));
+                
+                if (permissions) {
+                    // Clear existing content
+                    permissions.innerHTML = '';
+
+                    if (page.ownership.default >= 0) {
+                        const [ownership] = levels.find(([, level]) => level === page.ownership.default);
+                        const icon = document.createElement('i');
+                        icon.className = page.ownership.default == 0 ? 'fas fa-users-slash' : 'fas fa-users';
+                        icon.title = `${i18n("MonksEnhancedJournal.Everyone")}: ${i18n(`OWNERSHIP.${ownership}`)}`;
+                        permissions.appendChild(icon);
+                    }
+                    
+                    for (let [key, value] of Object.entries(page.ownership)) {
+                        let user = game.users.find(u => {
+                            return u.id == key && !u.isGM;
+                        });
+                        if (user != undefined && value > 0 && value != page.ownership.default) {
+                            const [ownership] = levels.find(([, level]) => level === value);
+                            const userDiv = document.createElement('div');
+                            userDiv.style.backgroundColor = user.color;
+                            userDiv.innerHTML = user.name[0];
+                            userDiv.title = user.name + ': ' + i18n(`OWNERSHIP.${ownership}`);
+                            permissions.appendChild(userDiv);
+                        }
                     }
                 }
             }
@@ -4825,40 +5322,75 @@ Hooks.on("renderJournalSheet", (sheet, html, data) => {
     }
 });
 
-Hooks.on("renderJournalPageSheet", (sheet, html, data) => {
+Hooks.on("renderJournalPageSheet", (sheet, element, data) => {
     //$("a.inline-request-roll", html).click(MonksEnhancedJournal._onClickInlineRequestRoll.bind(sheet));
-    $("a.picture-link", html).click(MonksEnhancedJournal._onClickPictureLink.bind(sheet));
+    const pictureLinks = element.querySelectorAll("a.picture-link");
+    pictureLinks.forEach(link => {
+        link.addEventListener('click', MonksEnhancedJournal._onClickPictureLink.bind(sheet));
+    });
 
-    if ($('select[name="title.level"] option[value="-1"]').length == 0) {
-        let opt = $("<option>").attr("value", -1).html("Appendix");
-        $('select[name="title.level"]').append(opt);
+    const titleLevelSelect = element.querySelector('select[name="title.level"]');
+    if (titleLevelSelect && !titleLevelSelect.querySelector('option[value="-1"]')) {
+        const opt = document.createElement("option");
+        opt.value = -1;
+        opt.innerHTML = "Appendix";
+        titleLevelSelect.appendChild(opt);
     }
-    if (foundry.utils.getProperty(data, "flags.monks-enhanced-journal.appendix"))
-        $('select[name="title.level"]').val(-1);
+    if (foundry.utils.getProperty(data, "flags.monks-enhanced-journal.appendix") && titleLevelSelect) {
+        titleLevelSelect.value = -1;
+    }
     if (data.isCharacter == undefined && (data.data.type == "video" || data.data.type == "image")) {
         if (!sheet.isEditable) {
-            let div = $('<div>').addClass("no-file-notification").toggle(data.data.src == undefined).html(`<i class="fas ${data.data.type == "video" ? 'fa-video-slash' : 'fa-image-slash'}"></i> No ${data.data.type}`).insertAfter(html[0]);
-            if (data.data.type == "image" && data.data.src == undefined) $('img', html).hide();
-            $('img, video', html).on("error", () => {
-                div.show();
-                $('img, video', html).parent().hide();
+            const div = document.createElement('div');
+            div.className = "no-file-notification";
+            div.style.display = data.data.src == undefined ? 'block' : 'none';
+            div.innerHTML = `<i class="fas ${data.data.type == "video" ? 'fa-video-slash' : 'fa-image-slash'}"></i> No ${data.data.type}`;
+            
+            // Insert after the first child of element (equivalent to html[0])
+            if (element.firstChild && element.firstChild.parentNode) {
+                element.firstChild.parentNode.insertBefore(div, element.firstChild.nextSibling);
+            } else {
+                element.appendChild(div);
+            }
+            
+            if (data.data.type == "image" && data.data.src == undefined) {
+                const images = element.querySelectorAll('img');
+                images.forEach(img => img.style.display = 'none');
+            }
+            
+            const mediaElements = element.querySelectorAll('img, video');
+            mediaElements.forEach(media => {
+                media.addEventListener("error", () => {
+                    div.style.display = 'block';
+                    if (media.parentNode) {
+                        media.parentNode.style.display = 'none';
+                    }
+                });
             });
         }
     }
 });
 
-Hooks.on("renderCompendium", async (app, html, data) => {
+Hooks.on("renderCompendium", async (app, element, data) => {
     if (app.collection.documentName == "JournalEntry") {
         let types = MonksEnhancedJournal.getDocumentTypes();
         await app.collection.getIndex({ fields: ["img", "flags.monks-enhanced-journal"] });
         for (let index of app.collection.index) {
-            let img = $(`li[data-document-id="${index._id}"] > img.thumbnail`, html);
+            let img = element.querySelector(`li[data-document-id="${index._id}"] > img.thumbnail`);
             let pagetype = foundry.utils.getProperty(index, "flags.monks-enhanced-journal.pagetype");
             let imgFile = index.img || foundry.utils.getProperty(index, "flags.monks-enhanced-journal.img") || (pagetype && types[pagetype] != undefined ? `modules/monks-enhanced-journal/assets/${pagetype}.png` : "icons/svg/book.svg");
-            if (img.length) {
-                img.attr("src", imgFile)
+            if (img) {
+                img.src = imgFile;
             } else {
-                $(`li[data-document-id="${index._id}"]`, html).prepend($("<img>").addClass("thumbnail").attr("title", index.name).attr("alt", index.name).attr("src", imgFile));
+                const listItem = element.querySelector(`li[data-document-id="${index._id}"]`);
+                if (listItem) {
+                    const newImg = document.createElement("img");
+                    newImg.className = "thumbnail";
+                    newImg.title = index.name;
+                    newImg.alt = index.name;
+                    newImg.src = imgFile;
+                    listItem.prepend(newImg);
+                }
             }
         }
     }

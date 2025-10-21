@@ -1,33 +1,58 @@
 import { MonksEnhancedJournal, log, error, i18n, setting, makeid, getVolume } from "../monks-enhanced-journal.js";
 
-export class EditSound extends FormApplication {
-    constructor(object, sound, options) {
-        super(object, options);
-
+export class EditSound extends foundry.applications.api.ApplicationV2 {
+    constructor(object, sound, options = {}) {
+        super(options);
+        this.object = object;
         this.soundfile = sound;
     }
 
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "journal-editsound",
-            title: i18n("MonksEnhancedJournal.EditSound"),
-            classes: ["edit-sound"],
-            template: "./modules/monks-enhanced-journal/templates/edit-sound.html",
+    static DEFAULT_OPTIONS = {
+        id: "journal-editsound",
+        classes: ["edit-sound"],
+        tag: "form",
+        window: {
+            title: "MonksEnhancedJournal.EditSound",
+            contentClasses: ["standard-form"]
+        },
+        position: {
             width: 500,
-            height: "auto",
-            closeOnSubmit: true,
-            popOut: true,
+            height: "auto"
+        },
+        form: {
+            handler: EditSound.#onSubmit,
+            submitOnChange: false,
+            closeOnSubmit: true
+        }
+    };
+
+    get title() {
+        return i18n("MonksEnhancedJournal.EditSound");
+    }
+
+    static PARTS = {
+        form: {
+            template: "modules/monks-enhanced-journal/templates/edit-sound.html"
+        }
+    };
+
+    static async #onSubmit(event, form, formData) {
+        const app = form.closest('.app')?.app;
+        if (!app) return;
+
+        await app._updateObject(event, formData.object);
+    }
+
+    async _prepareContext(options) {
+        const context = await super._prepareContext(options);
+        let sound = foundry.utils.mergeObject({volume: 1, loop: true, autoplay: true}, (this.object.getFlag("monks-enhanced-journal", "sound") || {}));
+        return foundry.utils.mergeObject(context, {
+            sound: sound,
+            object: this.object
         });
     }
 
-    getData(options) {
-        let sound = foundry.utils.mergeObject({volume: 1, loop: true, autoplay: true}, (this.object.getFlag("monks-enhanced-journal", "sound") || {}));
-        return {
-            sound: sound
-        };
-    }
-
-    _updateObject(event, formData) {
+    async _updateObject(event, formData) {
         let data = foundry.utils.expandObject(formData);
 
         if (this.soundfile) {
@@ -51,7 +76,7 @@ export class EditSound extends FormApplication {
             }
         }
 
-        this.object.setFlag('monks-enhanced-journal', 'sound', data.sound);
+        await this.object.setFlag('monks-enhanced-journal', 'sound', data.sound);
         this.submitting = true;
     }
 }

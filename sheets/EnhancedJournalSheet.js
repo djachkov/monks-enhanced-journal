@@ -602,7 +602,7 @@ export class EnhancedJournalSheet extends JournalPageSheet {
                         content: "Are you sure you want to clear the image?",
                         yes: async () => {
                             await that.object.update({ src: "" });
-                            that.render(true);
+                            that.render({ force: true });
                         }
                     });
                 }
@@ -1024,7 +1024,7 @@ export class EnhancedJournalSheet extends JournalPageSheet {
                     let result = this._onSubmit(event, { preventClose: true });
                     if (result instanceof Promise)
                         await result;
-                    this.render(true);
+                    this.render({ force: true });
                 },
                 top: this.position.top + 40,
                 left: this.position.left + 10

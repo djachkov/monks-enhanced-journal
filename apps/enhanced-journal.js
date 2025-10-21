@@ -2,7 +2,7 @@ import { MonksEnhancedJournal, log, i18n, error, setting, getVolume, makeid  } f
 import { EnhancedJournalSheet } from "../sheets/EnhancedJournalSheet.js"
 import { JournalEntrySheet } from "../sheets/JournalEntrySheet.js"
 
-export class EnhancedJournal extends Application {
+export class EnhancedJournal extends foundry.applications.api.HandlebarsApplicationMixin(foundry.applications.api.ApplicationV2) {
     tabs = [];
     bookmarks = [];
     searchresults = [];
@@ -12,6 +12,10 @@ export class EnhancedJournal extends Application {
 
     constructor(object, options = {}) {
         super(options);
+
+        // Store the object for later use
+        this._initialObject = object;
+        this._initialOptions = options;
 
         this.tabs = foundry.utils.duplicate(game.user.getFlag('monks-enhanced-journal', 'tabs') || [{ "id": makeid(), "text": i18n("MonksEnhancedJournal.NewTab"), "active": true, "history": [] }]);
         this.tabs = this.tabs.map(t => { delete t.entity; return t; })
@@ -34,11 +38,6 @@ export class EnhancedJournal extends Application {
         this._lastentry = null;
         this._backgroundsound = {};
 
-        //load up the last entry being shown
-        this.object = object;
-        if (object != undefined)
-            this.open(object, options?.newtab, { anchor: options?.anchor });
-
         this._soundHook = Hooks.on(game.modules.get("monks-sound-enhancements")?.active ? "globalSoundEffectVolumeChanged" : "globalInterfaceVolumeChanged", (volume) => {
             for (let sound of Object.values(this._backgroundsound)) {
                 sound.volume = volume * getVolume()
@@ -46,31 +45,59 @@ export class EnhancedJournal extends Application {
         });
     }
 
-    static get defaultOptions() {
-        let classes = ["monks-enhanced-journal", `${game.system.id}`];
+    /** @override */
+    async _onFirstRender(context, options) {
+        await super._onFirstRender(context, options);
+        
+        //load up the last entry being shown
+        this.object = this._initialObject;
+        if (this._initialObject != undefined)
+            this.open(this._initialObject, this._initialOptions?.newtab, { anchor: this._initialOptions?.anchor });
+    }
+
+    /** @override */
+    static DEFAULT_OPTIONS = {
+        id: "MonksEnhancedJournal",
+        tag: "div",
+        window: {
+            frame: true,
+            positioned: true,
+            title: "MonksEnhancedJournal.Title",
+            icon: "fas fa-book-open",
+            resizable: true,
+            minimizable: true
+        },
+        position: {
+            width: 1025,
+            height: 700
+        },
+        form: {
+            handler: undefined,
+            closeOnSubmit: false,
+            submitOnChange: true
+        },
+        dragDrop: [
+            { dragSelector: ".journal-tab, .bookmark-button", dropSelector: ".enhanced-journal-header" }
+        ]
+    };
+
+    /** @override */
+    static PARTS = {
+        main: {
+            template: "modules/monks-enhanced-journal/templates/main.html"
+        }
+    };
+
+    /** @override */
+    get classes() {
+        const classes = ["monks-enhanced-journal", `${game.system.id}`];
         if (game.modules.get("rippers-ui")?.active)
             classes.push('rippers-ui');
         if (game.modules.get("rpg-styled-ui")?.active)
             classes.push('rpg-styled-ui');
         if (!setting("show-bookmarkbar"))
             classes.push('hide-bookmark');
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "MonksEnhancedJournal",
-            template: "modules/monks-enhanced-journal/templates/main.html",
-            title: i18n("MonksEnhancedJournal.Title"),
-            classes: classes, //"sheet", "journal-sheet", 
-            popOut: true,
-            width: 1025,
-            height: 700,
-            resizable: true,
-            editable: true,
-            dragDrop: [{ dragSelector: ".journal-tab, .bookmark-button", dropSelector: ".enhanced-journal-header" }],
-            closeOnSubmit: false,
-            submitOnClose: false,
-            submitOnChange: true,
-            viewPermission: CONST.DOCUMENT_OWNERSHIP_LEVELS.NONE,
-            scrollY: ["ol.directory-list"]
-        });
+        return classes;
     }
 
     get entryType() {
@@ -104,12 +131,14 @@ export class EnhancedJournal extends Application {
         return editable;
     }
 
-    getData(options) {
+    /** @override */
+    async _prepareContext(options) {
         //const cfg = CONFIG["JournalEntry"];
         let canBack = this.canBack();
         let canForward = this.canForward();
 
-        return foundry.utils.mergeObject(super.getData(options),
+        const context = await super._prepareContext(options);
+        return foundry.utils.mergeObject(context,
             {
                 tabs: this.tabs,
                 bookmarks: this.bookmarks.sort((a, b) => a.sort - b.sort),
@@ -125,35 +154,100 @@ export class EnhancedJournal extends Application {
     //    return this.subsheet?.editors?.content?.active && this.subsheet.editors?.content?.mce?.isDirty();
     //}
 
-    async _render(force, options = {}) {
-        $('.open-gm-note', this.element).remove();
-        let result = await super._render(force, options);
+    /** @override */
+    async _onRender(context, options) {
+        // Remove any existing GM notes
+        const existingGMNotes = this.element.querySelectorAll('.open-gm-note');
+        existingGMNotes.forEach(note => note.remove());
 
+        // Set background images
         if (setting('background-image') != 'none') {
-            $(this.element).attr("background-image", setting('background-image'));
+            this.element.setAttribute("background-image", setting('background-image'));
         } else {
-            $(this.element).removeAttr("background-image");
+            this.element.removeAttribute("background-image");
         }
 
         if (setting('sidebar-image') != 'none') {
-            $(this.element).attr("sidebar-image", setting('sidebar-image'));
+            this.element.setAttribute("sidebar-image", setting('sidebar-image'));
         } else {
-            $(this.element).removeAttr("sidebar-image");
+            this.element.removeAttribute("sidebar-image");
         }
 
-        if (this.element.length) {
-            this.renderDirectory().then((html) => {
+        // Render directory and subsheet
+        this.renderDirectory().then((html) => {
+            if (html) {
                 MonksEnhancedJournal.updateDirectory(html, false);
-            })
+            }
+        }).catch(err => {
+            console.warn("Enhanced Journal: Error rendering directory", err);
+        });
 
-            this.renderSubSheet(force, options); /*.then(() => {
-                if (options?.pageId && this.subsheet.goToPage) {
-                    this.subsheet.goToPage(options.pageId, options?.anchor);
-                }
-            });*/  //Removing this because goToPage requires the toc to be loaded, and it's not loaded yet
+        this.renderSubSheet(true, options); /*.then(() => {
+            if (options?.pageId && this.subsheet.goToPage) {
+                this.subsheet.goToPage(options.pageId, options?.anchor);
+            }
+        });*/  //Removing this because goToPage requires the toc to be loaded, and it's not loaded yet
+
+        // Activate event listeners
+        this._activateEventListeners();
+    }
+
+    /**
+     * Activate event listeners for the Enhanced Journal
+     */
+    _activateEventListeners() {
+        const html = this.element;
+
+        this._contextMenu(html);
+
+        // Sidebar toggle
+        const sidebarToggle = html.querySelector('.sidebar-toggle');
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                if (this._collapsed)
+                    this.expandSidebar();
+                else
+                    this.collapseSidebar();
+            });
         }
 
-        return result;
+        // Add bookmark button
+        const addBookmarkBtn = html.querySelector('.add-bookmark');
+        if (addBookmarkBtn) {
+            addBookmarkBtn.addEventListener('click', this.addBookmark.bind(this));
+        }
+
+        // Bookmark buttons (excluding add-bookmark)
+        html.querySelectorAll('.bookmark-button:not(.add-bookmark)').forEach(btn => {
+            btn.addEventListener('click', this.activateBookmark.bind(this));
+        });
+
+        // Add tab button
+        const addTabBtn = html.querySelector('.tab-add');
+        if (addTabBtn) {
+            addTabBtn.addEventListener('click', this.addTab.bind(this));
+        }
+
+        // Journal tabs
+        html.querySelectorAll('.journal-tab').forEach(elem => {
+            elem.addEventListener('click', this.activateTab.bind(this, elem.getAttribute('data-tabid')));
+        });
+
+        // Journal tab close buttons
+        html.querySelectorAll('.journal-tab .close').forEach(closeBtn => {
+            const tabid = closeBtn.closest('.journal-tab').dataset.tabid;
+            const tab = this.tabs.find(t => t.id == tabid);
+            closeBtn.addEventListener('click', this.removeTab.bind(this, tab));
+        });
+
+        // Back/forward buttons
+        const showNavButtons = game.user.isGM || setting('allow-player');
+        html.querySelectorAll('.back-button, .forward-button').forEach(btn => {
+            btn.style.display = showNavButtons ? '' : 'none';
+            if (showNavButtons) {
+                btn.addEventListener('click', this.navigateHistory.bind(this));
+            }
+        });
     }
 
     async renderDirectory() {
@@ -181,22 +275,30 @@ export class EnhancedJournal extends Application {
         };
 
         let html = await renderTemplate(template, data);
-        html = $(html);
+        const htmlElement = document.createElement('div');
+        htmlElement.innerHTML = html;
+        const htmlContent = htmlElement.firstElementChild;
 
-        $('.directory-sidebar', this.element).empty().append(html);
+        // Check if element exists before trying to query it
+        if (this.element) {
+            const sidebarElement = this.element.querySelector('.directory-sidebar');
+            if (sidebarElement) {
+                sidebarElement.replaceChildren(htmlContent);
+            }
+        }
 
         //if (game.modules.get("forien-quest-log")?.active && !game.settings.get("forien-quest-log", 'showFolder')) {
         let folder = game.journal.directory.folders.find(f => (f.name == '_fql_quests' && f.parent == null));
         if (folder) {
-            let elem = html.find(`.folder[data-folder-id="${folder.id}"]`);
-            elem.remove();
+            let elem = html.querySelector(`.folder[data-folder-id="${folder.id}"]`);
+            if (elem) elem.remove();
         }
         //}
 
         folder = game.journal.directory.folders.find(f => (f.name == '_simple_calendar_notes_directory' && f.parent == null));
         if (folder) {
-            let elem = html.find(`.folder[data-folder-id="${folder.id}"]`);
-            elem.remove();
+            let elem = html.querySelector(`.folder[data-folder-id="${folder.id}"]`);
+            if (elem) elem.remove();
         }
 
         this.activateDirectoryListeners(html);
@@ -232,7 +334,7 @@ export class EnhancedJournal extends Application {
 
             options = foundry.utils.mergeObject(options, foundry.utils.mergeObject(defaultOptions, game.user.getFlag("monks-enhanced-journal", `pagestate.${this.object.id}`) || {}), { overwrite: false });
 
-            let contentform = $('.content > section', this.element);
+            let contentform = this.element.querySelector('.content > section');
 
             if (this.object instanceof JournalEntry && this.object.pages.size == 1 && (!!foundry.utils.getProperty(this.object.pages.contents[0], "flags.monks-enhanced-journal.type") || !!foundry.utils.getProperty(this.object, "flags.monks-enhanced-journal.type"))) {
                 let type = foundry.utils.getProperty(this.object.pages.contents[0], "flags.monks-enhanced-journal.type") || foundry.utils.getProperty(this.object, "flags.monks-enhanced-journal.type");
@@ -288,28 +390,48 @@ export class EnhancedJournal extends Application {
 
             this.activateFooterListeners(this.element);
 
-            $('> header a.subsheet', this.element).remove();
+            // Remove existing subsheet buttons
+            this.element.querySelectorAll('> header a.subsheet').forEach(el => el.remove());
+            
             if (this.subsheet._getHeaderButtons && this.object.id && !(this.object instanceof JournalEntry)) {
                 let buttons = this.subsheet._getHeaderButtons();
                 buttons.findSplice(b => b.class == "share-image");
                 Hooks.call(`getDocumentSheetHeaderButtons`, this.subsheet, buttons);
 
                 let first = true;
-                let a;
+                let lastButton;
+                const closeButton = this.element.querySelector('> header a.close');
+                
                 for (let btn of buttons) {
-                    if ($('> header a.' + btn.class, this.element).length == 0) {   //don't repeat buttons
-                        a = $('<a>').addClass(btn.class).addClass('subsheet').toggleClass('first', first)
-                            .append($('<i>').addClass(btn.icon))
-                            .append(i18n(btn.label))
-                            .click(event => {
-                                event.preventDefault();
-                                btn.onclick.call(this.subsheet, event);
-                            }).insertBefore($('> header a.close', this.element));
+                    // Check if button already exists
+                    if (!this.element.querySelector(`> header a.${btn.class}`)) {
+                        const a = document.createElement('a');
+                        a.className = `${btn.class} subsheet`;
+                        if (first) a.classList.add('first');
+                        
+                        const icon = document.createElement('i');
+                        icon.className = btn.icon;
+                        a.appendChild(icon);
+                        
+                        a.appendChild(document.createTextNode(i18n(btn.label)));
+                        
+                        a.addEventListener('click', event => {
+                            event.preventDefault();
+                            btn.onclick.call(this.subsheet, event);
+                        });
+                        
+                        if (closeButton) {
+                            closeButton.parentNode.insertBefore(a, closeButton);
+                        }
+                        
+                        lastButton = a;
                         first = false;
                     }
                 }
-                if (a)
-                    a.addClass('last');
+                
+                if (lastButton) {
+                    lastButton.classList.add('last');
+                }
             }
 
             this.subsheet.enhancedjournal = this;
@@ -347,9 +469,14 @@ export class EnhancedJournal extends Application {
             }
             let html = await renderTemplate(this.subsheet.template, templateData);
 
-            this.subdocument = $(html).get(0);
-            this.subsheet.form = (this.subdocument.tagName == 'FORM' ? this.subdocument : $('form:first', this.subdocument).get(0));
-            this.subsheet._element = $(this.subdocument);
+            // Create subdocument from HTML string
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            this.subdocument = tempDiv.firstElementChild;
+            
+            // Set subsheet form reference
+            this.subsheet.form = (this.subdocument.tagName == 'FORM' ? this.subdocument : this.subdocument.querySelector('form'));
+            this.subsheet._element = this.subdocument;
 
             if (this.subsheet.refresh)
                 this.subsheet.refresh();
@@ -373,12 +500,21 @@ export class EnhancedJournal extends Application {
                 }
             }
 
-            $('.window-title', this.element).html((this.subsheet.title || i18n("MonksEnhancedJournal.NewTab")) + ' - ' + i18n("MonksEnhancedJournal.Title"));
+            // Update window title
+            const windowTitle = this.element.querySelector('.window-title');
+            if (windowTitle) {
+                windowTitle.textContent = (this.subsheet.title || i18n("MonksEnhancedJournal.NewTab")) + ' - ' + i18n("MonksEnhancedJournal.Title");
+            }
 
             if (this.subsheet._createDocumentIdLink)
                 this.subsheet._createDocumentIdLink(this.element)
 
-            $('.content', this.element).attr('entity-type', this.object.type).attr('entity-id', this.object.id);
+            // Set content attributes
+            const contentElement = this.element.querySelector('.content');
+            if (contentElement) {
+                contentElement.setAttribute('entity-type', this.object.type);
+                contentElement.setAttribute('entity-id', this.object.id);
+            }
             //extract special classes
             if (setting("extract-extra-classes")) {
                 let extraClasses = this.subsheet.options.classes.filter(x => !["sheet", "journal-sheet", "journal-entry", "monks-journal-sheet"].includes(x) && !!x);
@@ -406,7 +542,7 @@ export class EnhancedJournal extends Application {
 
             if (this.subsheet._createSecretHandlers) {
                 this._secrets = this.subsheet._createSecretHandlers();
-                this._secrets.forEach(secret => secret.bind(this.element[0]));
+                this._secrets.forEach(secret => secret.bind(this.element));
             }
 
             //connect the tabs to the enhanced journal so that opening the regular document won't try and change tabs on the other window.
@@ -418,7 +554,7 @@ export class EnhancedJournal extends Application {
 
             //reset the original drag drop
             this._dragDrop = this._createDragDropHandlers();
-            this._dragDrop.forEach(d => d.bind(this.element[0]));
+            this._dragDrop.forEach(d => d.bind(this.element));
 
             //add the subsheet drag drop
             let subDragDrop = this.subsheet.options.dragDrop.map(d => {
@@ -433,13 +569,24 @@ export class EnhancedJournal extends Application {
                 };
                 return new DragDrop(d);
             });
-            subDragDrop.forEach(d => d.bind(contentform[0]));
+            subDragDrop.forEach(d => d.bind(contentform));
             this._dragDrop = this._dragDrop.concat(subDragDrop);
 
-            this.subsheet.activateListeners($(this.subdocument), this);
+            this.subsheet.activateListeners(this.subdocument, this);
 
-            $('button[type="submit"]', $(this.subdocument)).attr('type', 'button').on("click", this.subsheet._onSubmit.bind(this.subsheet));
-            $('form.journal-header', $(this.subdocument)).on("submit", () => { return false; });
+            // Handle submit buttons - change type and add click handler
+            this.subdocument.querySelectorAll('button[type="submit"]').forEach(btn => {
+                btn.setAttribute('type', 'button');
+                btn.addEventListener('click', this.subsheet._onSubmit.bind(this.subsheet));
+            });
+            
+            // Prevent journal header form submission
+            this.subdocument.querySelectorAll('form.journal-header').forEach(form => {
+                form.addEventListener('submit', (e) => { 
+                    e.preventDefault(); 
+                    return false; 
+                });
+            });
 
             if (this.subsheet.updateStyle && !["blank", "folder"].includes(this.object.type))
                 this.subsheet.updateStyle(null, this.subdocument);
@@ -526,7 +673,12 @@ export class EnhancedJournal extends Application {
             
             this._lastentry = this.object.id;
 
-            this.activateControls($('#journal-buttons', this.element).empty());
+            // Clear and activate journal controls
+            const journalButtons = this.element.querySelector('#journal-buttons');
+            if (journalButtons) {
+                journalButtons.replaceChildren();
+                this.activateControls(journalButtons);
+            }
 
             this.object._sheet = null; //set this to null so that other things can open the sheet
             this.subsheet._state = this.subsheet.constructor.RENDER_STATES.RENDERED;
@@ -543,9 +695,7 @@ export class EnhancedJournal extends Application {
             const selectors = this.subsheet.options.scrollY || [];
 
             this._scrollPositions = selectors.reduce((pos, sel) => {
-                //const el = $(sel, this.subdocument);
-                //if (el.length === 1) pos[sel] = Array.from(el).map(el => el[0].scrollTop);
-                const el = $(this.subdocument).find(sel);
+                const el = this.subdocument.querySelectorAll(sel);
                 pos[sel] = Array.from(el).map(el => el.scrollTop);
                 return pos;
             }, (this._scrollPositions || {}));
@@ -559,7 +709,7 @@ export class EnhancedJournal extends Application {
             const selectors = this.subsheet.options.scrollY || [];
 
             let newScrollPositions = selectors.reduce((pos, sel) => {
-                const el = $(this.subdocument).find(sel);
+                const el = this.subdocument.querySelectorAll(sel);
                 pos[sel] = Array.from(el).map(el => el.scrollTop);
                 return pos;
             }, {});
@@ -575,20 +725,45 @@ export class EnhancedJournal extends Application {
     }
 
     activateEditor() {
-        $('.nav-button.edit i', this.element).removeClass('fa-pencil-alt').addClass(setting("editor-engine") == "tinymce" ? 'fa-download' : 'fa-save').attr('title', i18n("MonksEnhancedJournal.SaveChanges"));
-        $('.nav-button.split', this.element).addClass('disabled');
+        // Update edit button
+        const editButton = this.element.querySelector('.nav-button.edit i');
+        if (editButton) {
+            editButton.classList.remove('fa-pencil-alt');
+            editButton.classList.add(setting("editor-engine") == "tinymce" ? 'fa-download' : 'fa-save');
+            editButton.parentElement.title = i18n("MonksEnhancedJournal.SaveChanges");
+        }
+        
+        // Disable split button
+        const splitButton = this.element.querySelector('.nav-button.split');
+        if (splitButton) {
+            splitButton.classList.add('disabled');
+        }
     }
 
     saveEditor(name) {
-        $('.nav-button.edit i', this.element).addClass('fa-pencil-alt').removeClass('fa-download').removeClass('fa-save').attr('title', i18n("MonksEnhancedJournal.EditDescription"));
-        $('.nav-button.split', this.element).removeClass('disabled');
+        // Reset edit button
+        const editButton = this.element.querySelector('.nav-button.edit i');
+        if (editButton) {
+            editButton.classList.add('fa-pencil-alt');
+            editButton.classList.remove('fa-download', 'fa-save');
+            editButton.parentElement.title = i18n("MonksEnhancedJournal.EditDescription");
+        }
+        
+        // Enable split button
+        const splitButton = this.element.querySelector('.nav-button.split');
+        if (splitButton) {
+            splitButton.classList.remove('disabled');
+        }
         const editor = this.subsheet.editors[name];
         if (editor)
             editor.button.style.display = "";
 
         const owner = this.object.isOwner;
         (game.system.id == "pf2e" ? game.pf2e.TextEditor : TextEditor).enrichHTML(this.object.content, { secrets: owner, documents: true, async: true }).then((content) => {
-            $(`.editor-content[data-edit="${name}"]`, this.element).html(content);
+            const editorContent = this.element.querySelector(`.editor-content[data-edit="${name}"]`);
+            if (editorContent) {
+                editorContent.innerHTML = content;
+            }
         });
         
     }
@@ -614,36 +789,50 @@ export class EnhancedJournal extends Application {
                     else if (!ctrl.conditional)
                         continue;
                 }
-                let div = '';
+                let div = null;
                 switch (ctrl.type || 'button') {
                     case 'button':
-                        div = $('<div>')
-                            .addClass('nav-button ' + ctrl.id)
-                            .attr('title', ctrl.text)
-                            .append($('<i>').addClass('fas ' + ctrl.icon))
-                            .on('click', ctrl.callback.bind(this.subsheet));
+                        div = document.createElement('div');
+                        div.className = `nav-button ${ctrl.id}`;
+                        div.title = ctrl.text;
+                        
+                        const icon = document.createElement('i');
+                        icon.className = `fas ${ctrl.icon}`;
+                        div.appendChild(icon);
+                        
+                        div.addEventListener('click', ctrl.callback.bind(this.subsheet));
                         break;
                     case 'input':
-                        div = $('<input>')
-                            .addClass('nav-input ' + ctrl.id)
-                            .attr(foundry.utils.mergeObject({ 'type': 'text', 'autocomplete': 'off', 'placeholder': ctrl.text }, (ctrl.attributes || {})))
-                            .on('keyup', function (event) {
-                                ctrl.callback.call(that.subsheet, this.value, event);
-                            });
+                        div = document.createElement('input');
+                        div.className = `nav-input ${ctrl.id}`;
+                        
+                        const attrs = foundry.utils.mergeObject({ 'type': 'text', 'autocomplete': 'off', 'placeholder': ctrl.text }, (ctrl.attributes || {}));
+                        for (const [key, value] of Object.entries(attrs)) {
+                            div.setAttribute(key, value);
+                        }
+                        
+                        div.addEventListener('keyup', function (event) {
+                            ctrl.callback.call(that.subsheet, this.value, event);
+                        });
                         break;
                     case 'text':
-                        div = $('<div>').addClass('nav-text ' + ctrl.id).html(ctrl.text);
+                        div = document.createElement('div');
+                        div.className = `nav-text ${ctrl.id}`;
+                        div.innerHTML = ctrl.text;
                         break;
                 }
 
-                if (ctrl.attr) {
-                    div.attr(ctrl.attr);
+                if (div && ctrl.attr) {
+                    for (const [key, value] of Object.entries(ctrl.attr)) {
+                        div.setAttribute(key, value);
+                    }
                 }
 
-                if (div != '') {
-                    if (ctrl.visible === false)
-                        div.hide();
-                    html.append(div);
+                if (div) {
+                    if (ctrl.visible === false) {
+                        div.style.display = 'none';
+                    }
+                    html.appendChild(div);
                 }
             }
         }
@@ -651,7 +840,17 @@ export class EnhancedJournal extends Application {
         if (this.object instanceof JournalEntry) {
             const modes = JournalSheet.VIEW_MODES;
             let mode = game.user.getFlag("monks-enhanced-journal", `pagestate.${this.object.id}.mode`) ?? this.subsheet?.mode;
-            $('.viewmode', html).attr("data-action", "toggleView").attr("title", mode === modes.SINGLE ? "View Multiple Pages" : "View Single Page").find("i").toggleClass("fa-notes", mode === modes.SINGLE).toggleClass("fa-note", mode !== modes.SINGLE);
+            const viewModeBtn = html.querySelector ? html.querySelector('.viewmode') : this.element.querySelector('.viewmode');
+            if (viewModeBtn) {
+                viewModeBtn.setAttribute("data-action", "toggleView");
+                viewModeBtn.setAttribute("title", mode === modes.SINGLE ? "View Multiple Pages" : "View Single Page");
+                
+                const icon = viewModeBtn.querySelector("i");
+                if (icon) {
+                    icon.classList.toggle("fa-notes", mode === modes.SINGLE);
+                    icon.classList.toggle("fa-note", mode !== modes.SINGLE);
+                }
+            }
         }
     }
 
@@ -741,7 +940,10 @@ export class EnhancedJournal extends Application {
             if (tab.entityId?.startsWith(entityId)) {
                 tab.entity = await this.findEntity('', tab.text); //I know this will return a blank one, just want to maintain consistency
                 tab.text = i18n("MonksEnhancedJournal.NewTab");
-                $('.journal-tab[data-tabid="${tab.id}"] .tab-content', this.element).html(tab.text);
+                const tabElement = this.element.querySelector(`.journal-tab[data-tabid="${tab.id}"] .tab-content`);
+                if (tabElement) {
+                    tabElement.textContent = tab.text;
+                }
             }
 
             //remove it from the history
@@ -846,7 +1048,9 @@ export class EnhancedJournal extends Application {
             currentTab.active = false;
         tab.active = true;
 
-        this._tabs.active = null;
+        if (this._tabs) {
+            this._tabs.active = null;
+        }
 
         //$('.back-button', this.element).toggleClass('disabled', !this.canBack(tab));
         //$('.forward-button', this.element).toggleClass('disabled', !this.canForward(tab));
@@ -862,7 +1066,14 @@ export class EnhancedJournal extends Application {
             this.render(true, options);
         else {
             window.setTimeout(() => {
-                $(`.journal-tab[data-tabid="${tab.id}"]`, this.element).addClass("active").siblings().removeClass("active");
+                // Set active tab
+                const currentTab = this.element.querySelector(`.journal-tab[data-tabid="${tab.id}"]`);
+                if (currentTab) {
+                    // Remove active class from all tabs
+                    this.element.querySelectorAll('.journal-tab').forEach(t => t.classList.remove('active'));
+                    // Add active class to current tab
+                    currentTab.classList.add('active');
+                }
             }, 100);
         }
 
@@ -927,7 +1138,8 @@ export class EnhancedJournal extends Application {
         let idx = this.tabs.findIndex(t => t.id == tab.id);
         if (idx >= 0) {
             this.tabs.splice(idx, 1);
-            $('.journal-tab[data-tabid="' + tab.id + '"]', this.element).remove();
+            const tabElement = this.element.querySelector('.journal-tab[data-tabid="' + tab.id + '"]');
+            if (tabElement) tabElement.remove();
         }
 
         if (this.tabs.length == 0) {
@@ -965,11 +1177,18 @@ export class EnhancedJournal extends Application {
     updateTabNames(uuid, name) {
         for (let tab of this.tabs) {
             if (tab.entityId == uuid) {
-                $(`.journal-tab[data-tabid="${tab.id}"] .tab-content`, this.element).attr("title", name).html(name);
+                const tabContent = this.element.querySelector(`.journal-tab[data-tabid="${tab.id}"] .tab-content`);
+                if (tabContent) {
+                    tabContent.setAttribute("title", name);
+                    tabContent.innerHTML = name;
+                }
                 tab.text = name;
                 this.saveTabs();
                 if (tab.active) {
-                    $('.window-title', this.element).html((tab.text || i18n("MonksEnhancedJournal.NewTab")) + ' - ' + i18n("MonksEnhancedJournal.Title"));
+                    const windowTitle = this.element.querySelector('.window-title');
+                    if (windowTitle) {
+                        windowTitle.textContent = (tab.text || i18n("MonksEnhancedJournal.NewTab")) + ' - ' + i18n("MonksEnhancedJournal.Title");
+                    }
                 }
             }
         }
@@ -987,7 +1206,7 @@ export class EnhancedJournal extends Application {
     }
 
     navigateHistory(event) {
-        if (!$(event.currentTarget).hasClass('disabled')) {
+        if (!event.currentTarget.classList.contains('disabled')) {
             let dir = event.currentTarget.dataset.history;
             let tab = this.tabs.active();
 
@@ -1082,11 +1301,18 @@ export class EnhancedJournal extends Application {
 
         this.bookmarks.push(bookmark);
 
-        $('<div>')
-            .addClass('bookmark-button')
-            .attr({ title: bookmark.text, 'data-bookmark-id': bookmark.id, 'data-entity-id': bookmark.entityId })
-            .html(`<i class="fas ${bookmark.icon}"></i> ${bookmark.text}`)
-            .appendTo('.bookmark-bar', this.element).get(0).click(this.activateBookmark.bind(this));
+        const bookmarkDiv = document.createElement('div');
+        bookmarkDiv.className = 'bookmark-button';
+        bookmarkDiv.setAttribute('title', bookmark.text);
+        bookmarkDiv.setAttribute('data-bookmark-id', bookmark.id);
+        bookmarkDiv.setAttribute('data-entity-id', bookmark.entityId);
+        bookmarkDiv.innerHTML = `<i class="fas ${bookmark.icon}"></i> ${bookmark.text}`;
+        
+        const bookmarkBar = this.element.querySelector('.bookmark-bar');
+        if (bookmarkBar) {
+            bookmarkBar.appendChild(bookmarkDiv);
+            bookmarkDiv.addEventListener('click', this.activateBookmark.bind(this));
+        }
 
         this.saveBookmarks();
     }
@@ -1100,7 +1326,8 @@ export class EnhancedJournal extends Application {
 
     removeBookmark(bookmark) {
         this.bookmarks.findSplice(b => b.id == bookmark.id);
-        $(`.bookmark-button[data-bookmark-id="${bookmark.id}"]`, this.element).remove();
+        const bookmarkElement = this.element.querySelector(`.bookmark-button[data-bookmark-id="${bookmark.id}"]`);
+        if (bookmarkElement) bookmarkElement.remove();
         this.saveBookmarks();
     }
 
@@ -1114,7 +1341,9 @@ export class EnhancedJournal extends Application {
 
     async open(entity, newtab, options) {
         //if there are no tabs, then create one
-        this._tabs.active = null;
+        if (this._tabs) {
+            this._tabs.active = null;
+        }
         if (this.tabs.length == 0) {
             this.addTab(entity);
         } else {
@@ -1154,16 +1383,34 @@ export class EnhancedJournal extends Application {
 
     expandSidebar() {
         this._collapsed = false;
-        $('.enhanced-journal', this.element).removeClass('collapse');
-        $('.sidebar-toggle', this.element).attr('data-tooltip', i18n("MonksEnhancedJournal.CollapseDirectory"));
-        $('.sidebar-toggle i', this.element).removeClass('fa-caret-left').addClass('fa-caret-right');
+        const enhancedJournal = this.element.querySelector('.enhanced-journal');
+        if (enhancedJournal) enhancedJournal.classList.remove('collapse');
+        
+        const sidebarToggle = this.element.querySelector('.sidebar-toggle');
+        if (sidebarToggle) {
+            sidebarToggle.setAttribute('data-tooltip', i18n("MonksEnhancedJournal.CollapseDirectory"));
+            const icon = sidebarToggle.querySelector('i');
+            if (icon) {
+                icon.classList.remove('fa-caret-left');
+                icon.classList.add('fa-caret-right');
+            }
+        }
     }
 
     collapseSidebar() {
         this._collapsed = true;
-        $('.enhanced-journal', this.element).addClass('collapse');
-        $('.sidebar-toggle', this.element).attr('data-tooltip', i18n("MonksEnhancedJournal.ExpandDirectory"));
-        $('.sidebar-toggle i', this.element).removeClass('fa-caret-right').addClass('fa-caret-left');
+        const enhancedJournal = this.element.querySelector('.enhanced-journal');
+        if (enhancedJournal) enhancedJournal.classList.add('collapse');
+        
+        const sidebarToggle = this.element.querySelector('.sidebar-toggle');
+        if (sidebarToggle) {
+            sidebarToggle.setAttribute('data-tooltip', i18n("MonksEnhancedJournal.ExpandDirectory"));
+            const icon = sidebarToggle.querySelector('i');
+            if (icon) {
+                icon.classList.remove('fa-caret-right');
+                icon.classList.add('fa-caret-left');
+            }
+        }
     }
 
     _randomizePerson() {
@@ -1178,24 +1425,40 @@ export class EnhancedJournal extends Application {
             accuracy: "complementary",
             separateWordSearch: false,
             noMatch: function () {
-                if (query != '')
-                    $('.mainbar .navigation .search', that.element).addClass('error');
+                if (query != '') {
+                    const searchElement = that.element.querySelector('.mainbar .navigation .search');
+                    if (searchElement) searchElement.classList.add('error');
+                }
             },
             done: function (total) {
-                if (query == '')
-                    $('.mainbar .navigation .search', that.element).removeClass('error');
+                const searchElement = that.element.querySelector('.mainbar .navigation .search');
+                if (query == '') {
+                    if (searchElement) searchElement.classList.remove('error');
+                }
                 if (total > 0) {
-                    $('.mainbar .navigation .search', that.element).removeClass('error');
-                    let first = $('.editor .editor-content mark:first,.journal-entry-content .scrollable mark:first', that.element);
-                    $('.editor', that.element).parent().scrollTop(first.position().top - 10);
-                    $('.scrollable', that.element).scrollTop(first.position().top - 10);
+                    if (searchElement) searchElement.classList.remove('error');
+                    
+                    const first = that.element.querySelector('.editor .editor-content mark:first-child, .journal-entry-content .scrollable mark:first-child');
+                    if (first) {
+                        const rect = first.getBoundingClientRect();
+                        const editor = that.element.querySelector('.editor');
+                        const scrollable = that.element.querySelector('.scrollable');
+                        
+                        if (editor && editor.parentElement) {
+                            editor.parentElement.scrollTop = rect.top - 10;
+                        }
+                        if (scrollable) {
+                            scrollable.scrollTop = rect.top - 10;
+                        }
+                    }
                 }
             }
         });
     }
 
     splitJournal(event) {
-        if ($('.nav-button.split i', this.enhancedjournal.element).hasClass('disabled')) {
+        const splitButton = this.enhancedjournal.element.querySelector('.nav-button.split i');
+        if (splitButton && splitButton.classList.contains('disabled')) {
             ui.notifications.warn(i18n("MonksEnhancedJournal.CannotSplitJournal"));
             return;
         }
@@ -1219,11 +1482,12 @@ export class EnhancedJournal extends Application {
             return true;
     }
 
+    /** @override */
     _onDragStart(event) {
         const target = event.currentTarget;
 
-        if ($(target).hasClass('journal-tab')) {
-            const dragData = { from: this.object.uuid };
+        if (target.classList.contains('journal-tab')) {
+            const dragData = { from: this.object?.uuid };
 
             let tabid = target.dataset.tabid;
             let tab = this.tabs.find(t => t.id == tabid);
@@ -1234,8 +1498,8 @@ export class EnhancedJournal extends Application {
             log('Drag Start', dragData);
 
             event.dataTransfer.setData("text/plain", JSON.stringify(dragData));
-        } else if ($(target).hasClass('bookmark-button')) {
-            const dragData = { from: this.object.uuid };
+        } else if (target.classList.contains('bookmark-button')) {
+            const dragData = { from: this.object?.uuid };
 
             let bookmarkId = target.dataset.bookmarkId;
             let bookmark = this.bookmarks.find(t => t.id == bookmarkId);
@@ -1246,13 +1510,15 @@ export class EnhancedJournal extends Application {
             log('Drag Start', dragData);
 
             event.dataTransfer.setData("text/plain", JSON.stringify(dragData));
-        } else
+        } else if (this.subsheet && this.subsheet._onDragStart) {
             return this.subsheet._onDragStart(event);
+        }
     }
 
+    /** @override */
     async _onDrop(event) {
         log('enhanced journal drop', event);
-        let result = $(event.currentTarget).hasClass('enhanced-journal-header') ? false : this.subsheet._onDrop(event);
+        let result = event.currentTarget.classList.contains('enhanced-journal-header') ? false : this.subsheet?._onDrop(event);
 
         if (result instanceof Promise)
             result = await result;
@@ -1287,10 +1553,14 @@ export class EnhancedJournal extends Application {
                     return tab;
                 };
 
-                if (from < to)
-                    $('.journal-tab[data-tabid="' + data.tabid + '"]', this.element).insertAfter(target);
-                else
-                    $('.journal-tab[data-tabid="' + data.tabid + '"]', this.element).insertBefore(target);
+                const tabElement = this.element.querySelector('.journal-tab[data-tabid="' + data.tabid + '"]');
+                if (tabElement) {
+                    if (from < to) {
+                        target.parentNode.insertBefore(tabElement, target.nextSibling);
+                    } else {
+                        target.parentNode.insertBefore(tabElement, target);
+                    }
+                }
 
                 game.user.update({
                     flags: { 'monks-enhanced-journal': { 'tabs': tabs } }
@@ -1307,10 +1577,14 @@ export class EnhancedJournal extends Application {
                 bookmarks.splice(to, 0, bookmarks.splice(from, 1)[0]);
 
                 this.bookmarks = bookmarks;
-                if (from < to)
-                    $('.bookmark-button[data-bookmark-id="' + data.bookmarkId + '"]', this.element).insertAfter(target);
-                else
-                    $('.bookmark-button[data-bookmark-id="' + data.bookmarkId + '"]', this.element).insertBefore(target);
+                const bookmarkElement = this.element.querySelector('.bookmark-button[data-bookmark-id="' + data.bookmarkId + '"]');
+                if (bookmarkElement) {
+                    if (from < to) {
+                        target.parentNode.insertBefore(bookmarkElement, target.nextSibling);
+                    } else {
+                        target.parentNode.insertBefore(bookmarkElement, target);
+                    }
+                }
 
                 game.user.update({
                     flags: { 'monks-enhanced-journal': { 'bookmarks': bookmarks } }
@@ -1360,8 +1634,8 @@ export class EnhancedJournal extends Application {
     }
 
     findMapEntry(event) {
-        let pageId = $(event.currentTarget).attr('page-id');
-        let journalId = $(event.currentTarget).attr('journal-id');
+        let pageId = event.currentTarget.getAttribute('page-id');
+        let journalId = event.currentTarget.getAttribute('journal-id');
 
         let note = canvas.notes.placeables.find(n => {
             return n.document.entryId == pageId || n.document.pageId == pageId || (n.document.entryId == journalId && n.document.pageId == null);
@@ -1380,18 +1654,30 @@ export class EnhancedJournal extends Application {
     }
 
     fullscreen() {
-        if (this.element.hasClass("maximized")) {
-            this.element.removeClass("maximized");
-            $('.toggle-fullscreen', this.element).html(`<i class="fas fa-expand-arrows-alt"></i>${i18n("MonksEnhancedJournal.Maximize")}`);
+        if (this.element.classList.contains("maximized")) {
+            this.element.classList.remove("maximized");
+            const toggleBtn = this.element.querySelector('.toggle-fullscreen');
+            if (toggleBtn) {
+                toggleBtn.innerHTML = `<i class="fas fa-expand-arrows-alt"></i>${i18n("MonksEnhancedJournal.Maximize")}`;
+            }
             this.setPosition({ width: this._previousPosition.width, height: this._previousPosition.height });
             this.setPosition({ left: this._previousPosition.left, top: this._previousPosition.top });
         } else {
-            this.element.addClass("maximized");
-            $('.toggle-fullscreen', this.element).html(`<i class="fas fa-compress-arrows-alt"></i>${i18n("MonksEnhancedJournal.Restore")}`);
+            this.element.classList.add("maximized");
+            const toggleBtn = this.element.querySelector('.toggle-fullscreen');
+            if (toggleBtn) {
+                toggleBtn.innerHTML = `<i class="fas fa-compress-arrows-alt"></i>${i18n("MonksEnhancedJournal.Restore")}`;
+            }
             
             this._previousPosition = foundry.utils.duplicate(this.position);
             this.setPosition({ left: 0, top: 0 });
-            this.setPosition({ height: $('body').height(), width: $('body').width() - $('#sidebar').width() });
+            
+            const sidebar = document.querySelector('#sidebar');
+            const sidebarWidth = sidebar ? sidebar.offsetWidth : 0;
+            this.setPosition({ 
+                height: document.body.offsetHeight, 
+                width: document.body.offsetWidth - sidebarWidth 
+            });
         }
     }
 
@@ -1523,22 +1809,38 @@ export class EnhancedJournal extends Application {
                 }
             }
         ]);
-        $('.tab-bar', html).on("contextmenu", (event) => {
-            var r = document.querySelector(':root');
-            let tab = event.target.closest(".journal-tab");
-            if (!tab) {
-                event.stopPropagation();
-                event.preventDefault();
-                return false;
-            }
-            let x = $(tab).position().left;
-            r.style.setProperty('--mej-context-x', x + "px");
+        // Tab bar context menu
+        const tabBar = html.querySelector ? html.querySelector('.tab-bar') : this.element.querySelector('.tab-bar');
+        if (tabBar) {
+            tabBar.addEventListener("contextmenu", (event) => {
+                var r = document.querySelector(':root');
+                let tab = event.target.closest(".journal-tab");
+                if (!tab) {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    return false;
+                }
+                const rect = tab.getBoundingClientRect();
+                const parentRect = tabBar.getBoundingClientRect();
+                let x = rect.left - parentRect.left;
+                r.style.setProperty('--mej-context-x', x + "px");
+            });
+        }
+        
+        // Journal tab context menu
+        const journalTabs = html.querySelectorAll ? html.querySelectorAll('.tab-bar .journal-tab') : this.element.querySelectorAll('.tab-bar .journal-tab');
+        journalTabs.forEach(tab => {
+            tab.addEventListener("contextmenu", (event) => {
+                this.contextTab = event.currentTarget.dataset.tabid;
+            });
         });
-        $('.tab-bar .journal-tab', html).on("contextmenu", (event) => {
-            this.contextTab = event.currentTarget.dataset.tabid;
-        });
-        $('.bookmark-bar .bookmark-button', html).on("contextmenu", (event) => {
-            this.contextBookmark = event.currentTarget.dataset.bookmarkId;
+        
+        // Bookmark context menu
+        const bookmarkButtons = html.querySelectorAll ? html.querySelectorAll('.bookmark-bar .bookmark-button') : this.element.querySelectorAll('.bookmark-bar .bookmark-button');
+        bookmarkButtons.forEach(btn => {
+            btn.addEventListener("contextmenu", (event) => {
+                this.contextBookmark = event.currentTarget.dataset.bookmarkId;
+            });
         });
 
         let history = await this.getHistory();
@@ -1650,79 +1952,86 @@ export class EnhancedJournal extends Application {
     }
 
     activateDirectoryListeners(html) {   
-        $('.sidebar-toggle', html).on('click', function () {
-            if (this._collapsed)
-                this.expandSidebar();
-            else
-                this.collapseSidebar();
-        });
+        const sidebarToggle = html.querySelector('.sidebar-toggle');
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', () => {
+                if (this._collapsed)
+                    this.expandSidebar();
+                else
+                    this.collapseSidebar();
+            });
+        }
         //_onClickPageLink
 
         ui.journal._contextMenu.call(ui.journal, html);
 
-        const directory = html.find(".directory-list");
-        const entries = directory.find(".directory-item");
+        const directory = html.querySelector(".directory-list");
+        const entries = directory ? directory.querySelectorAll(".directory-item") : [];
 
         // Directory-level events
-        html.find(`[data-folder-depth="${this.maxFolderDepth}"] .create-folder`).remove();
-        html.find('.toggle-sort').click((event) => {
-            event.preventDefault();
-            ui.journal.collection.toggleSortingMode();
-            ui.journal.render();
-        });
-        html.find(".collapse-all").click(ui.journal.collapseAll.bind(this));
+        const createFolders = html.querySelectorAll(`[data-folder-depth="${this.maxFolderDepth}"] .create-folder`);
+        createFolders.forEach(el => el.remove());
+        
+        const toggleSort = html.querySelector('.toggle-sort');
+        if (toggleSort) {
+            toggleSort.addEventListener('click', (event) => {
+                event.preventDefault();
+                ui.journal.collection.toggleSortingMode();
+                ui.journal.render();
+            });
+        }
+        
+        const collapseAll = html.querySelector(".collapse-all");
+        if (collapseAll) {
+            collapseAll.addEventListener('click', ui.journal.collapseAll.bind(this));
+        }
 
         // Intersection Observer
-        const observer = new IntersectionObserver(ui.journal._onLazyLoadImage.bind(this), { root: directory[0] });
-        entries.each((i, li) => observer.observe(li));
+        if (directory) {
+            const observer = new IntersectionObserver(ui.journal._onLazyLoadImage.bind(this), { root: directory });
+            entries.forEach(li => observer.observe(li));
 
-        // Entry-level events
-        directory.on("click", ".entry-name", ui.journal._onClickEntryName.bind(ui.journal));
-        directory.on("click", ".folder-header", ui.journal._toggleFolder.bind(this));
+            // Entry-level events
+            directory.addEventListener("click", (event) => {
+                if (event.target.matches(".entry-name") || event.target.closest(".entry-name")) {
+                    ui.journal._onClickEntryName.call(ui.journal, event);
+                }
+            });
+            directory.addEventListener("click", (event) => {
+                if (event.target.matches(".folder-header") || event.target.closest(".folder-header")) {
+                    ui.journal._toggleFolder.call(this, event);
+                }
+            });
+        }
         const dh = ui.journal._onDragHighlight.bind(this);
-        html.find(".folder").on("dragenter", dh).on("dragleave", dh);
+        const folders = html.querySelectorAll(".folder");
+        folders.forEach(folder => {
+            folder.addEventListener("dragenter", dh);
+            folder.addEventListener("dragleave", dh);
+        });
         //this._contextMenu(html);
 
         // Allow folder and entry creation
-        if (ui.journal.canCreateFolder) html.find(".create-folder").click(ui.journal._onCreateFolder.bind(this));
-        if (ui.journal.canCreateEntry) html.find(".create-entry").click(ui.journal._onCreateEntry.bind(this));
+        if (ui.journal.canCreateFolder) {
+            const createFolderBtns = html.querySelectorAll(".create-folder");
+            createFolderBtns.forEach(btn => {
+                btn.addEventListener('click', ui.journal._onCreateFolder.bind(this));
+            });
+        }
+        if (ui.journal.canCreateEntry) {
+            const createEntryBtns = html.querySelectorAll(".create-entry");
+            createEntryBtns.forEach(btn => {
+                btn.addEventListener('click', ui.journal._onCreateEntry.bind(this));
+            });
+        }
 
         this._searchFilters = [new SearchFilter({ inputSelector: 'input[name="search"]', contentSelector: ".directory-list", callback: ui.journal._onSearchFilter.bind(ui.journal) })];
-        this._searchFilters.forEach(f => f.bind(html[0]));
+        this._searchFilters.forEach(f => f.bind(html));
 
         ui.journal._dragDrop.forEach(d => d.bind(html[0]));
     }
 
-    activateListeners(html) {
-        super.activateListeners(html);
 
-        let that = this;
-
-        this._contextMenu(html);
-
-        $('.sidebar-toggle', html).on('click', $.proxy(function () {
-            if (this._collapsed)
-                this.expandSidebar();
-            else
-                this.collapseSidebar();
-        }, this));
-
-        html.find('.add-bookmark').click(this.addBookmark.bind(this));
-        html.find('.bookmark-button:not(.add-bookmark)').click(this.activateBookmark.bind(this));
-
-        html.find('.tab-add').click(this.addTab.bind(this));
-        $('.journal-tab', html).each((idx, elem) => {
-            $(elem).click(this.activateTab.bind(that, $(elem).attr('data-tabid')));
-        });
-
-        $('.journal-tab .close').each(function () {
-            let tabid = $(this).closest('.journal-tab')[0].dataset.tabid;
-            let tab = that.tabs.find(t => t.id == tabid);
-            $(this).click(that.removeTab.bind(that, tab));
-        });
-
-        $('.back-button, .forward-button', html).toggle(game.user.isGM || setting('allow-player')).on('click', this.navigateHistory.bind(this));
-    }
 
     activateFooterListeners(html) {
         let folder = (this.object.folder || this.object.parent?.folder);
@@ -1747,26 +2056,81 @@ export class EnhancedJournal extends Application {
 
         let prev = (idx > 0 ? documents[idx - 1] : null);
         let next = (idx < documents.length - 1 ? documents[idx + 1] : null);
-        $('.navigate-prev', html).toggle(!["blank", "folder"].includes(this.object.type)).toggleClass('disabled', !prev).attr("title", prev?.name).on("click", this.openPage.bind(this, prev));
-        $('.navigate-next', html).toggle(!["blank", "folder"].includes(this.object.type)).toggleClass('disabled', !next).attr("title", next?.name).on("click", this.openPage.bind(this, next));
+        // Navigation buttons
+        const navPrev = html.querySelector('.navigate-prev');
+        const navNext = html.querySelector('.navigate-next');
+        
+        if (navPrev) {
+            const isVisible = !["blank", "folder"].includes(this.object.type);
+            navPrev.style.display = isVisible ? '' : 'none';
+            navPrev.classList.toggle('disabled', !prev);
+            if (prev) navPrev.setAttribute("title", prev.name);
+            if (isVisible && prev) {
+                navPrev.addEventListener("click", () => this.openPage(prev));
+            }
+        }
+        
+        if (navNext) {
+            const isVisible = !["blank", "folder"].includes(this.object.type);
+            navNext.style.display = isVisible ? '' : 'none';
+            navNext.classList.toggle('disabled', !next);
+            if (next) navNext.setAttribute("title", next.name);
+            if (isVisible && next) {
+                navNext.addEventListener("click", () => this.openPage(next));
+            }
+        }
 
+        // Page navigation for JournalEntry
+        const pagePrev = html.querySelector('.page-prev');
+        const pageNext = html.querySelector('.page-next');
+        
         if (this.object instanceof JournalEntry) {
-            $('.page-prev', html).toggleClass("disabled", !this.subsheet || this.subsheet?.pageIndex < 1).show().on("click", this.previousPage.bind(this));
-            $('.page-next', html).toggleClass("disabled", !this.subsheet || this.subsheet?.pageIndex >= (this.object?.pages?.size || 0) - 1).show().on("click", this.nextPage.bind(this));
+            if (pagePrev) {
+                pagePrev.classList.toggle("disabled", !this.subsheet || this.subsheet?.pageIndex < 1);
+                pagePrev.style.display = '';
+                pagePrev.addEventListener("click", () => this.previousPage());
+            }
+            if (pageNext) {
+                pageNext.classList.toggle("disabled", !this.subsheet || this.subsheet?.pageIndex >= (this.object?.pages?.size || 0) - 1);
+                pageNext.style.display = '';
+                pageNext.addEventListener("click", () => this.nextPage());
+            }
         /*} else if (this.object instanceof JournalEntryPage) {
             let pageIdx = this.object.parent.pages.contents.findIndex(p => p.id == this.object.id);
             let prevPage = (pageIdx > 0 ? this.object.parent.pages.contents[pageIdx - 1] : null);
             let nextPage = (pageIdx < this.object.parent.pages?.contents.length - 1 ? this.object.parent.pages.contents[pageIdx + 1] : null);
-            $('.page-prev', html).toggleClass('disabled', !prevPage).toggle(this.object.parent.pages?.contents?.length > 1).attr("title", prevPage?.name).on("click", this.previousPage.bind(this, prevPage));
-            $('.page-next', html).toggleClass('disabled', !nextPage).toggle(this.object.parent.pages?.contents?.length > 1).attr("title", nextPage?.name).on("click", this.nextPage.bind(this, nextPage));
+            if (pagePrev) {
+                pagePrev.classList.toggle('disabled', !prevPage);
+                pagePrev.style.display = this.object.parent.pages?.contents?.length > 1 ? '' : 'none';
+                if (prevPage) pagePrev.setAttribute("title", prevPage.name);
+                pagePrev.addEventListener("click", () => this.previousPage(prevPage));
+            }
+            if (pageNext) {
+                pageNext.classList.toggle('disabled', !nextPage);
+                pageNext.style.display = this.object.parent.pages?.contents?.length > 1 ? '' : 'none';
+                if (nextPage) pageNext.setAttribute("title", nextPage.name);
+                pageNext.addEventListener("click", () => this.nextPage(nextPage));
+            }
         */
         } else {
-            $('.page-prev', html).hide();
-            $('.page-next', html).hide();
+            if (pagePrev) pagePrev.style.display = 'none';
+            if (pageNext) pageNext.style.display = 'none';
         }
 
-        $('.add-page', html).on("click", this.addPage.bind(this));
-        $('.toggle-menu', html).toggle(!(this.object instanceof JournalEntryPage)).on("click", this.toggleMenu.bind(this));
+        // Add page and toggle menu buttons
+        const addPageBtn = html.querySelector('.add-page');
+        if (addPageBtn) {
+            addPageBtn.addEventListener("click", () => this.addPage());
+        }
+        
+        const toggleMenuBtn = html.querySelector('.toggle-menu');
+        if (toggleMenuBtn) {
+            const isVisible = !(this.object instanceof JournalEntryPage);
+            toggleMenuBtn.style.display = isVisible ? '' : 'none';
+            if (isVisible) {
+                toggleMenuBtn.addEventListener("click", () => this.toggleMenu());
+            }
+        }
      }
 
     journalEntryDocumentControls() {
@@ -1801,10 +2165,15 @@ export class EnhancedJournal extends Application {
         this.subsheet._onAction(event);
         const modes = JournalSheet.VIEW_MODES;
         game.user.setFlag("monks-enhanced-journal", `pagestate.${this.object.id}.mode`, this.subsheet.mode);
-        $('.viewmode', this.element).attr("title", this.subsheet.mode === modes.SINGLE ? "View Multiple Pages" : "View Single Page")
-            .find("i")
-            .toggleClass("fa-notes", this.subsheet.mode === modes.SINGLE)
-            .toggleClass("fa-note", this.subsheet.mode !== modes.SINGLE);
+        const viewmodeBtn = this.element.querySelector('.viewmode');
+        if (viewmodeBtn) {
+            viewmodeBtn.setAttribute("title", this.subsheet.mode === modes.SINGLE ? "View Multiple Pages" : "View Single Page");
+            const icon = viewmodeBtn.querySelector("i");
+            if (icon) {
+                icon.classList.toggle("fa-notes", this.subsheet.mode === modes.SINGLE);
+                icon.classList.toggle("fa-note", this.subsheet.mode !== modes.SINGLE);
+            }
+        }
     }
 
     journalSettings() {
@@ -1824,16 +2193,34 @@ export class EnhancedJournal extends Application {
     previousPage() {
         if (this.subsheet) {
             if (this.subsheet.previousPage) this.subsheet.previousPage(event);
-            $('.page-prev', this.element).toggleClass("disabled", !this.subsheet || this.subsheet?.pageIndex < 1);
-            $('.page-next', this.element).toggleClass("disabled", !this.subsheet || this.subsheet?.pageIndex >= this.subsheet?._pages.length - 1);
+            
+            // Update page navigation buttons
+            const pagePrev = this.element.querySelector('.page-prev');
+            const pageNext = this.element.querySelector('.page-next');
+            
+            if (pagePrev) {
+                pagePrev.classList.toggle("disabled", !this.subsheet || this.subsheet?.pageIndex < 1);
+            }
+            if (pageNext) {
+                pageNext.classList.toggle("disabled", !this.subsheet || this.subsheet?.pageIndex >= this.subsheet?._pages.length - 1);
+            }
         }
     }
 
     nextPage() {
         if (this.subsheet) {
             if (this.subsheet.nextPage) this.subsheet.nextPage(event);
-            $('.page-prev', this.element).toggleClass("disabled", !this.subsheet || this.subsheet?.pageIndex < 1);
-            $('.page-next', this.element).toggleClass("disabled", !this.subsheet || this.subsheet?.pageIndex >= this.subsheet?._pages.length - 1);
+            
+            // Update page navigation buttons
+            const pagePrev = this.element.querySelector('.page-prev');
+            const pageNext = this.element.querySelector('.page-next');
+            
+            if (pagePrev) {
+                pagePrev.classList.toggle("disabled", !this.subsheet || this.subsheet?.pageIndex < 1);
+            }
+            if (pageNext) {
+                pageNext.classList.toggle("disabled", !this.subsheet || this.subsheet?.pageIndex >= this.subsheet?._pages.length - 1);
+            }
         }
     }
 }

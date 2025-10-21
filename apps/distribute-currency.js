@@ -1,6 +1,6 @@
 import { MonksEnhancedJournal, log, setting, i18n } from '../monks-enhanced-journal.js';
 
-export class DistributeCurrency extends FormApplication {
+export class DistributeCurrency extends foundry.applications.api.ApplicationV2 {
     original = {};
     characters = [];
     currency = {};
@@ -32,30 +32,50 @@ export class DistributeCurrency extends FormApplication {
 
     }
 
-    /** @override */
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "distribute-currency",
-            classes: ["distribute-currency", "monks-journal-sheet", "dialog"],
-            title: i18n("MonksEnhancedJournal.DistributeCurrency"),
-            template: "modules/monks-enhanced-journal/templates/distribute-currency.html",
+    static DEFAULT_OPTIONS = {
+        id: "distribute-currency",
+        classes: ["distribute-currency", "monks-journal-sheet", "dialog"],
+        tag: "form",
+        window: {
+            title: "MonksEnhancedJournal.DistributeCurrency",
+            contentClasses: ["standard-form"]
+        },
+        position: {
             width: 600,
-            height: 'auto',
-            closeOnSubmit: true,
-            submitOnClose: false,
-            submitOnChange: false
+            height: "auto"
+        },
+        form: {
+            handler: DistributeCurrency.#onSubmit,
+            submitOnChange: false,
+            closeOnSubmit: true
+        }
+    };
+
+    get title() {
+        return i18n("MonksEnhancedJournal.DistributeCurrency");
+    }
+
+    static PARTS = {
+        form: {
+            template: "modules/monks-enhanced-journal/templates/distribute-currency.html"
+        }
+    };
+
+    async _prepareContext(options) {
+        const context = await super._prepareContext(options);
+        return foundry.utils.mergeObject(context, {
+            characters: this.characters,
+            currencies: this.currencies,
+            currency: this.currency,
+            totals: this.totals
         });
     }
 
-    getData(options) {
-        return foundry.utils.mergeObject(super.getData(options),
-            {
-                characters: this.characters,
-                currencies: this.currencies,
-                currency: this.currency,
-                totals: this.totals
-            }
-        );
+    static async #onSubmit(event, form, formData) {
+        const app = form.closest('.app')?.app;
+        if (!app) return;
+
+        app.loot.doSplitMoney(app.characters, app.currency);
     }
 
     calcTotal(currencies) {
@@ -82,7 +102,7 @@ export class DistributeCurrency extends FormApplication {
 
         this.calcTotal();
 
-        this.render(true);
+        this.render({ force: true });
     }
 
     updateAmount(event) {
@@ -90,10 +110,10 @@ export class DistributeCurrency extends FormApplication {
         let charId = event.currentTarget.dataset.character;
 
         if (charId == undefined)
-            this.currency[curr] = parseInt($(event.currentTarget).val() || 0);
+            this.currency[curr] = parseInt(event.currentTarget.value || 0);
         else {
             let character = this.characters.find(c => c.id == charId);
-            let value = $(event.currentTarget).val();
+            let value = event.currentTarget.value;
             if (value === "")
                 character.currency[curr] = "";
             else
@@ -102,7 +122,7 @@ export class DistributeCurrency extends FormApplication {
 
         this.calcTotal();
 
-        this.render(true);
+        this.render({ force: true });
     }
 
     splitCurrency(event) {
@@ -136,7 +156,7 @@ export class DistributeCurrency extends FormApplication {
 
         this.calcTotal();
 
-        this.render(true);
+        this.render({ force: true });
     }
 
     assignCurrency(event) {
@@ -150,21 +170,30 @@ export class DistributeCurrency extends FormApplication {
 
         this.calcTotal();
 
-        this.render(true);
+        this.render({ force: true });
     }
 
-    activateListeners(html) {
-        super.activateListeners(html);
+    async _onRender(context, options) {
+        const html = this.element;
 
-        html.find('input.player-amount').change(this.updateAmount.bind(this));
-        html.find('input.currency-amount').change(this.updateAmount.bind(this));
+        // Add event listeners for input fields
+        html.querySelectorAll('input.player-amount, input.currency-amount').forEach(input => {
+            input.addEventListener('change', this.updateAmount.bind(this));
+        });
 
-        html.find('a.split').click(this.splitCurrency.bind(this));
-        html.find('a.reset').click(this.resetData.bind(this));
-        html.find('a.assign').click(this.assignCurrency.bind(this));
+        // Add event listeners for action buttons
+        html.querySelectorAll('a.split').forEach(button => {
+            button.addEventListener('click', this.splitCurrency.bind(this));
+        });
+
+        html.querySelectorAll('a.reset').forEach(button => {
+            button.addEventListener('click', this.resetData.bind(this));
+        });
+
+        html.querySelectorAll('a.assign').forEach(button => {
+            button.addEventListener('click', this.assignCurrency.bind(this));
+        });
     }
 
-    _updateObject() {
-        this.loot.doSplitMoney(this.characters, this.currency);
-    }
+
 }

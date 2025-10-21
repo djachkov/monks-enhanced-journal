@@ -1,29 +1,53 @@
 import { MonksEnhancedJournal, log, error, i18n, setting, makeid } from "../monks-enhanced-journal.js";
 
-export class EditCurrency extends FormApplication {
-    constructor(object, options) {
-        super(object, options);
-
+export class EditCurrency extends foundry.applications.api.ApplicationV2 {
+    constructor(object, options = {}) {
+        super(options);
+        this.object = object;
         this.currency = MonksEnhancedJournal.currencies;
     }
 
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "journal-editcurrency",
-            title: i18n("MonksEnhancedJournal.EditCurrency"),
-            classes: ["edit-currency"],
-            template: "./modules/monks-enhanced-journal/templates/edit-currency.html",
+    static DEFAULT_OPTIONS = {
+        id: "journal-editcurrency",
+        classes: ["edit-currency"],
+        tag: "form",
+        window: {
+            title: "MonksEnhancedJournal.EditCurrency",
+            contentClasses: ["standard-form"]
+        },
+        position: {
             width: 500,
-            height: "auto",
-            closeOnSubmit: true,
-            popOut: true,
-        });
+            height: "auto"
+        },
+        form: {
+            handler: EditCurrency.#onSubmit,
+            submitOnChange: false,
+            closeOnSubmit: true
+        }
+    };
+
+    get title() {
+        return i18n("MonksEnhancedJournal.EditCurrency");
     }
 
-    getData(options) {
-        return {
+    static PARTS = {
+        form: {
+            template: "modules/monks-enhanced-journal/templates/edit-currency.html"
+        }
+    };
+
+    static async #onSubmit(event, form, formData) {
+        const app = form.closest('.app')?.app;
+        if (!app) return;
+
+        app._updateObject();
+    }
+
+    async _prepareContext(options) {
+        const context = await super._prepareContext(options);
+        return foundry.utils.mergeObject(context, {
             currency: this.currency
-        };
+        });
     }
 
     _updateObject() {
@@ -39,11 +63,11 @@ export class EditCurrency extends FormApplication {
 
     changeData(event) {
         let currid = event.currentTarget.closest('li.item').dataset.id;
-        let prop = $(event.currentTarget).attr("name");
+        let prop = event.currentTarget.getAttribute("name");
 
         let currency = this.currency.find(c => c.id == currid);
         if (currency) {
-            let val = $(event.currentTarget).val();
+            let val = event.currentTarget.value;
             if (prop == "convert") {
                 if (isNaN(val))
                     val = 1;
@@ -52,12 +76,12 @@ export class EditCurrency extends FormApplication {
             }
             else if (prop == "id") {
                 val = val.replace(/[^a-z]\-/gi, '');
-                $(event.currentTarget).val(val);
+                event.currentTarget.value = val;
                 if (!!this.currency.find(c => c.id == val)) {
-                    $(event.currentTarget).val(currid)
+                    event.currentTarget.value = currid;
                     return;
                 }
-                $(event.currentTarget.closest('li.item')).attr("data-id", val);
+                event.currentTarget.closest('li.item').setAttribute("data-id", val);
             }
 
             currency[prop] = val;
@@ -76,20 +100,29 @@ export class EditCurrency extends FormApplication {
     }
 
     refresh() {
-        this.render(true);
+        this.render({ force: true });
         let that = this;
         window.setTimeout(function () { that.setPosition(); }, 500);
     }
 
-    activateListeners(html) {
-        super.activateListeners(html);
+    async _onRender(context, options) {
+        const html = this.element;
 
-        $('button[name="submit"]', html).click(this._onSubmit.bind(this));
-        $('button[name="reset"]', html).click(this.resetCurrency.bind(this));
+        // Add event listeners for form elements
+        html.querySelectorAll('button[name="reset"]').forEach(button => {
+            button.addEventListener('click', this.resetCurrency.bind(this));
+        });
 
-        $('input[name]', html).change(this.changeData.bind(this));
+        html.querySelectorAll('input[name]').forEach(input => {
+            input.addEventListener('change', this.changeData.bind(this));
+        });
 
-        $('.item-delete', html).click(this.removeCurrency.bind(this));
-        $('.item-add', html).click(this.addCurrency.bind(this));
-    };
+        html.querySelectorAll('.item-delete').forEach(button => {
+            button.addEventListener('click', this.removeCurrency.bind(this));
+        });
+
+        html.querySelectorAll('.item-add').forEach(button => {
+            button.addEventListener('click', this.addCurrency.bind(this));
+        });
+    }
 }

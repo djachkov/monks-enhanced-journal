@@ -1,10 +1,11 @@
 import { MonksEnhancedJournal, log, setting, i18n, makeid } from '../monks-enhanced-journal.js';
 
-export class CustomisePages extends FormApplication {
+export class CustomisePages extends foundry.applications.api.ApplicationV2 {
 
     constructor(object, options) {
-        super(object, options);
+        super(options);
 
+        this.object = object;
         this.sheetSettings = {};
         let types = MonksEnhancedJournal.getDocumentTypes();
         for (let page of CustomisePages.typeList) {
@@ -16,34 +17,46 @@ export class CustomisePages extends FormApplication {
                 this.sheetSettings[page] = settings;
             }
         }
+        this._activeCategory = "encounter";
     }
+
     get activeCategory() {
-        return this._tabs[0].active;
+        return this._activeCategory;
     }
 
     static get typeList() {
         return ["encounter", "event", "organization", "person", "picture", "place", "poi", "quest", "shop"];
     }
-    static get defaultOptions() {
-        let tabs = [{ navSelector: ".page-tabs", contentSelector: ".categories > div", initial: "encounter" }];
-        for (let page of CustomisePages.typeList) {
-            tabs.push({ navSelector: `.${page}-tabs`, contentSelector: `.${page}-body`, initial: "tabs" });
-        }
 
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "customise-pages",
-            classes: ["form"],
-            title: "Customise Pages",
-            template: "modules/monks-enhanced-journal/templates/customise/customise-pages.html",
-            tabs,
+    static DEFAULT_OPTIONS = {
+        id: "customise-pages",
+        form: {
+            handler: CustomisePages.#onSubmit,
+            closeOnSubmit: true,
+            submitOnClose: false,
+            submitOnChange: false
+        },
+        position: {
             width: 800,
             resizable: true,
-            scrollY: [".sidebar .tabs", ".item-list"],
-            dragDrop: [{ dragSelector: ".reorder-attribute", dropSelector: ".item-list" }]
-        });
+        },
+        window: {
+            title: "Customise Pages",
+        }
     }
 
-    async _renderInner(...args) {
+    static PARTS = {
+        form: {
+            template: "modules/monks-enhanced-journal/templates/customise/customise-pages.html"
+        }
+    }
+
+    static async #onSubmit(event, form, formData) {
+        const app = this;
+        await game.settings.set("monks-enhanced-journal", "sheet-settings", app.sheetSettings, { diff: false });
+    }
+
+    async _preparePartContext(partId, context, options) {
         let load_templates = {};
         for (let page of CustomisePages.typeList) {
             let template = `modules/monks-enhanced-journal/templates/customise/${page}.html`;
@@ -51,12 +64,11 @@ export class CustomisePages extends FormApplication {
             delete Handlebars.partials[template];
         }
         await loadTemplates(load_templates);
-        const html = await super._renderInner(...args);
-        return html;
+        return context;
     }
 
-    getData(options) {
-        let data = super.getData(options);
+    _prepareContext(options) {
+        let data = {};
         data.generalEdit = true;
         data.sheetSettings = foundry.utils.duplicate(this.sheetSettings);
 
@@ -67,19 +79,43 @@ export class CustomisePages extends FormApplication {
         return data;
     }
 
-    activateListeners(html) {
-        super.activateListeners(html);
+    _onRender(context, options) {
+        const resetAllButton = this.element.querySelector("button.reset-all");
+        if (resetAllButton) {
+            resetAllButton.addEventListener('click', this._onResetDefaults.bind(this));
+        }
 
-        html.find("button.reset-all").click(this._onResetDefaults.bind(this));
+        const inputFields = this.element.querySelectorAll('input[name]');
+        inputFields.forEach(input => {
+            input.addEventListener('change', this.changeData.bind(this));
+        });
 
-        $('input[name]', html).change(this.changeData.bind(this));
+        const deleteButtons = this.element.querySelectorAll('.item-delete-attribute');
+        deleteButtons.forEach(button => {
+            button.addEventListener('click', this.removeAttribute.bind(this));
+        });
 
-        $('.item-delete-attribute', html).click(this.removeAttribute.bind(this));
-        $('.item-add-attribute', html).click(this.addAttribute.bind(this));
-    };
+        const addButtons = this.element.querySelectorAll('.item-add-attribute');
+        addButtons.forEach(button => {
+            button.addEventListener('click', this.addAttribute.bind(this));
+        });
+
+        // Set up drag and drop
+        const dragElements = this.element.querySelectorAll('.reorder-attribute');
+        dragElements.forEach(element => {
+            element.draggable = true;
+            element.addEventListener('dragstart', this._onDragStart.bind(this));
+        });
+
+        const dropElements = this.element.querySelectorAll('.item-list');
+        dropElements.forEach(element => {
+            element.addEventListener('drop', this._onDrop.bind(this));
+            element.addEventListener('dragover', (e) => e.preventDefault());
+        });
+    }
 
     get currentType() {
-        return this._tabs[0].active;
+        return this.activeCategory;
     }
 
     addAttribute(event) {
@@ -96,38 +132,21 @@ export class CustomisePages extends FormApplication {
 
         attributes[foundry.utils.randomID()] = { id: foundry.utils.randomID(), name: "", shown: true, full: false, order: maxOrder + 1 };
 
-        this.render(true);
+        this.render({ force: true });
     }
 
     changeData(event) {
-        let prop = $(event.currentTarget).attr("name");
+        let prop = event.currentTarget.getAttribute("name");
         if (foundry.utils.hasProperty(this, prop)) {
-            let val = $(event.currentTarget).attr("type") == "checkbox" ? $(event.currentTarget).prop('checked') : $(event.currentTarget).val();
+            let val = event.currentTarget.type === "checkbox" ? event.currentTarget.checked : event.currentTarget.value;
             foundry.utils.setProperty(this, prop, val);
         }
     }
 
-    removeAttribute(event) {
-        let key = event.currentTarget.closest('li.item').dataset.id;
-
-        let target = this;
-        let parts = key.split('.');
-        for (let i = 0; i < parts.length; i++) {
-            let p = parts[i];
-            const t = getType(target);
-            if (!((t === "Object") || (t === "Array"))) break;
-            if (i === parts.length - 1) {
-                delete target[p];
-                break;
-            }
-            if (p in target) target = target[p];
-            else {
-                target = undefined;
-                break;
-            }
-        }
-
-        this.render(true);
+        removeAttribute(event) {
+        event.preventDefault();
+        const li = event.currentTarget.closest('li');
+        if (li) li.remove();
     }
 
     _onDragStart(event) {
@@ -170,14 +189,22 @@ export class CustomisePages extends FormApplication {
                         attr.order--;
                     }
                 }
-                $('.item-list .item[data-id="' + data.id + '"]', this.element).insertAfter(target);
+                const draggedElement = this.element.querySelector(`.item-list .item[data-id="${data.id}"]`);
+                if (draggedElement && target.nextSibling) {
+                    target.parentNode.insertBefore(draggedElement, target.nextSibling);
+                } else if (draggedElement) {
+                    target.parentNode.appendChild(draggedElement);
+                }
             } else {
                 for (let attr of Object.values(attributes)) {
                     if (attr.order < from && attr.order >= to) {
                         attr.order++;
                     }
                 }
-                $('.item-list .item[data-id="' + data.id + '"]', this.element).insertBefore(target);
+                const draggedElement = this.element.querySelector(`.item-list .item[data-id="${data.id}"]`);
+                if (draggedElement) {
+                    target.parentNode.insertBefore(draggedElement, target);
+                }
             }
             (foundry.utils.getProperty(this, data.id) || {}).order = to;
         }
@@ -192,6 +219,6 @@ export class CustomisePages extends FormApplication {
         await game.settings.set("monks-enhanced-journal", "sheet-settings", sheetSettings.default);
         this.sheetSettings = sheetSettings.default;
 
-        this.render(true);
+        this.render({ force: true });
     }
 }

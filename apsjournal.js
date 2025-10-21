@@ -149,7 +149,7 @@ export class APSJ {
 
     static async getBlock(colour) {
         if (['card', 'scroll', 'encounter', 'read-aloud'].includes(colour)) {
-            let content = await renderTemplate(
+            let content = await foundry.applications.handlebars.renderTemplate(
                 `modules/monks-enhanced-journal/templates/apsjournal/${colour}.html`
             );
             return content;

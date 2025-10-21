@@ -1,26 +1,56 @@
 import { MonksEnhancedJournal, log, setting, i18n, makeid } from '../monks-enhanced-journal.js';
 
-export class ObjectiveDisplay extends Application {
-    constructor() {
-        super();
+export class ObjectiveDisplay extends foundry.applications.api.ApplicationV2 {
+    constructor(options = {}) {
+        super(options);
+    }
+
+    static DEFAULT_OPTIONS = {
+        id: "objective-display",
+        window: {
+            title: "MonksEnhancedJournal.Quests",
+            resizable: true
+        },
+        position: {
+            width: 500,
+            height: 300,
+            top: 75,
+            left: 120
+        }
+    };
+
+    static PARTS = {
+        display: {
+            template: "modules/monks-enhanced-journal/templates/objective-display.html"
+        }
+    };
+
+    /** @override */
+    get title() {
+        return i18n("MonksEnhancedJournal.Quests");
     }
 
     /** @override */
-    static get defaultOptions() {
-        let pos = game.user.getFlag("monks-enhanced-journal", "objectivePos");
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "objective-display",
-            title: i18n("MonksEnhancedJournal.Quests"),
-            template: "modules/monks-enhanced-journal/templates/objective-display.html",
-            width: pos?.width || 500,
-            height: pos?.height || 300,
-            top: pos?.top || 75,
-            left: pos?.left || 120,
-            resizable: true
-        });
+    _getHeaderControls() {
+        return super._getHeaderControls();
     }
 
-    getData(options) {
+    /** @override */
+    _initializeApplicationOptions(options) {
+        options = super._initializeApplicationOptions(options);
+        
+        // Apply saved position from user flags
+        let pos = game.user.getFlag("monks-enhanced-journal", "objectivePos");
+        if (pos) {
+            options.position = foundry.utils.mergeObject(options.position, pos);
+        }
+        
+        return options;
+    }
+
+    async _prepareContext(options) {
+        const context = await super._prepareContext(options);
+        
         let icons = {
             inactive: "fa-ban",
             available: "fa-file-circle-plus",
@@ -28,6 +58,7 @@ export class ObjectiveDisplay extends Application {
             completed: "fa-check",
             failed: "fa-xmark"
         }
+        
         let quests = game.journal.filter(j => {
             if (j.pages.size != 1)
                 return false;
@@ -68,21 +99,24 @@ export class ObjectiveDisplay extends Application {
             return indexA - indexB;
         });
 
-        return foundry.utils.mergeObject(super.getData(options), { quests: quests } );
+        return foundry.utils.mergeObject(context, { quests: quests });
     }
 
-    async _render(force, options) {
-        let that = this;
-        return super._render(force, options).then((html) => {
-            $('h4', this.element).addClass('flexrow')
-            delete ui.windows[that.appId];
+    async _onRender(context, options) {
+        const html = this.element;
+
+        // Add flexrow class to h4 elements (replacing jQuery)
+        html.querySelectorAll('h4').forEach(h4 => {
+            h4.classList.add('flexrow');
         });
-    }
 
-    activateListeners(html) {
-        super.activateListeners(html);
+        // Add event listeners for quest items
+        html.querySelectorAll('li[data-document-id]').forEach(element => {
+            element.addEventListener('click', this.openQuest.bind(this));
+        });
 
-        $('li[data-document-id]', html).on("click", this.openQuest.bind(this));
+        // Remove from ui.windows (ApplicationV2 handles this differently)
+        delete ui.windows[this.id];
     }
 
     async openQuest(event) {

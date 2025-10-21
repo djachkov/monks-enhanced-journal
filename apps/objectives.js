@@ -1,39 +1,65 @@
 import { MonksEnhancedJournal, log, setting, i18n, makeid } from '../monks-enhanced-journal.js';
 
-export class Objectives extends FormApplication {
+export class Objectives extends foundry.applications.api.ApplicationV2 {
     constructor(object, journalentry, options = {}) {
-        super(object, options);
+        super(options);
+        this.object = object;
         this.journalentry = journalentry;
     }
 
-    /** @override */
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "objectives",
-            classes: ["form", "objective-sheet"],
-            title: i18n("MonksEnhancedJournal.Objectives"),
-            template: "modules/monks-enhanced-journal/templates/objectives.html",
+    static DEFAULT_OPTIONS = {
+        id: "objectives",
+        classes: ["form", "objective-sheet"],
+        tag: "form",
+        window: {
+            title: "MonksEnhancedJournal.Objectives",
+            resizable: true,
+            contentClasses: ["standard-form"]
+        },
+        position: {
             width: 500,
-            resizable: true
-        });
+            height: "auto"
+        },
+        form: {
+            handler: Objectives.#onSubmit,
+            submitOnChange: false,
+            closeOnSubmit: true
+        }
+    };
+
+    get title() {
+        return i18n("MonksEnhancedJournal.Objectives");
     }
 
-    async getData() {
-        let data = await super.getData();
+    static PARTS = {
+        form: {
+            template: "modules/monks-enhanced-journal/templates/objectives.html"
+        }
+    };
 
-        //this._convertFormats(data);
-        data.enrichedText = await TextEditor.enrichHTML(data.object.content, {
+    static async #onSubmit(event, form, formData) {
+        const app = form.closest('.app')?.app;
+        if (!app) return;
+
+        await app._updateObject(event, formData.object);
+    }
+
+    async _prepareContext(options) {
+        const context = await super._prepareContext(options);
+
+        //this._convertFormats(context);
+        context.enrichedText = await TextEditor.enrichHTML(this.object.content, {
             relativeTo: this.journalentry.object,
             secrets: this.journalentry.object.isOwner,
             async: true
         });
 
-        return data;
+        context.object = this.object;
+        return context;
     }
 
     /* -------------------------------------------- */
 
-    /** @override */
     async _updateObject(event, formData) {
         log('updating objective', event, formData, this.object);
         foundry.utils.mergeObject(this.object, formData);
@@ -43,6 +69,6 @@ export class Objectives extends FormApplication {
             objectives.push(this.object);
         }
 
-        this.journalentry.object.setFlag('monks-enhanced-journal', 'objectives', objectives);
+        await this.journalentry.object.setFlag('monks-enhanced-journal', 'objectives', objectives);
     }
 }

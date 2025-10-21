@@ -1,29 +1,62 @@
 import { MonksEnhancedJournal, log, setting, i18n } from '../monks-enhanced-journal.js';
 import { MEJHelpers } from '../helpers.js';
 
-export class AdjustPrice extends FormApplication {
+export class AdjustPrice extends foundry.applications.api.ApplicationV2 {
     constructor(object, options = {}) {
         super(options);
 
         this.object = object;
     }
-
-    /** @override */
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "adjust-price",
-            classes: ["adjust-price", "monks-journal-sheet", "dialog"],
-            title: i18n("MonksEnhancedJournal.AdjustPrices"),
-            template: "modules/monks-enhanced-journal/templates/adjust-price.html",
-            width: 400,
-            height: 'auto',
+    static DEFAULT_OPTIONS = {
+        id: "adjust-price",
+        form: {
+            handler: AdjustPrice.#onSubmit,
             closeOnSubmit: true,
             submitOnClose: false,
             submitOnChange: false
-        });
+        },
+        position: {
+            width: 400,
+            height: 'auto',
+        },
+        window: {
+            title: "MonksEnhancedJournal.AdjustPrices",
+        }
     }
 
-    getData(options) {
+    get title() {
+        return i18n("MonksEnhancedJournal.AdjustPrices");
+    }
+    
+    static PARTS = {
+        form: {
+            classes: ["adjust-price", "monks-journal-sheet", "dialog"],
+            template: "modules/monks-enhanced-journal/templates/adjust-price.html",
+        }
+    }
+
+    static async #onSubmit(event, form, formData) {
+        const app = this;
+        let data = foundry.utils.expandObject(formData.object);
+
+        for (let [k, v] of Object.entries(data.adjustment)) {
+            if (v.sell == undefined)
+                delete data.adjustment[k].sell;
+            if (v.buy == undefined)
+                delete data.adjustment[k].buy;
+
+            if (Object.keys(data.adjustment[k]).length == 0)
+                delete data.adjustment[k];
+        }
+
+        if (app.object) {
+            await app.object.unsetFlag('monks-enhanced-journal', 'adjustment');
+            await app.object.setFlag('monks-enhanced-journal', 'adjustment', data.adjustment);
+        } else {
+            await game.settings.set("monks-enhanced-journal", "adjustment-defaults", data.adjustment, { diff: false });
+        }
+    }
+    _prepareContext(options) {
         const original = Object.keys(game.system?.documentTypes?.Item || {});
         let types = original.filter(x => MonksEnhancedJournal.includedTypes.includes(x));
         types = types.reduce((obj, t) => {
@@ -44,59 +77,55 @@ export class AdjustPrice extends FormApplication {
         }
         data.showConvert = !!this.object;
 
-        return foundry.utils.mergeObject(super.getData(options), data );
+        return data;
     }
 
-    activateListeners(html) {
-        super.activateListeners(html);
+    _onRender(context, options) {
+        const convertButton = this.element.querySelector('.convert-button');
+        if (convertButton) {
+            convertButton.addEventListener('click', this.convertItems.bind(this));
+        }
 
-        $('.convert-button', html).on("click", this.convertItems.bind(this, html));
-        $('.cancel', html).on("click", this.close.bind(this));
-        $('.reset', html).on("click", this.resetValues.bind(this));
+        const cancelButton = this.element.querySelector('.cancel');
+        if (cancelButton) {
+            cancelButton.addEventListener('click', this.close.bind(this));
+        }
 
-        $('.sell-field', html).on("blur", this.validateField.bind(this));
+        const resetButton = this.element.querySelector('.reset');
+        if (resetButton) {
+            resetButton.addEventListener('click', this.resetValues.bind(this));
+        }
+
+        const sellFields = this.element.querySelectorAll('.sell-field');
+        sellFields.forEach(field => {
+            field.addEventListener('blur', this.validateField.bind(this));
+        });
     }
 
     resetValues(event) {
         event.stopPropagation();
         event.preventDefault();
 
-        $('.sell-field', this.element).val('');
-        $('.buy-field', this.element).val('');
+        const sellFields = this.element.querySelectorAll('.sell-field');
+        sellFields.forEach(field => field.value = '');
+
+        const buyFields = this.element.querySelectorAll('.buy-field');
+        buyFields.forEach(field => field.value = '');
     }
 
     validateField(event) {
-        let val = parseFloat($(event.currentTarget).val());
+        let val = parseFloat(event.currentTarget.value);
         if (!isNaN(val) && val < 0) {
-            $(event.currentTarget).val('');
+            event.currentTarget.value = '';
         }
     }
 
-    async _updateObject(event, formData) {
-        let data = foundry.utils.expandObject(formData);
-
-        for (let [k,v] of Object.entries(data.adjustment)) {
-            if (v.sell == undefined)
-                delete data.adjustment[k].sell;
-            if (v.buy == undefined)
-                delete data.adjustment[k].buy;
-
-            if (Object.keys(data.adjustment[k]).length == 0)
-                delete data.adjustment[k];
-        }
-
-        if (this.object) {
-            await this.object.unsetFlag('monks-enhanced-journal', 'adjustment');
-            await this.object.setFlag('monks-enhanced-journal', 'adjustment', data.adjustment);
-        } else
-            await game.settings.set("monks-enhanced-journal", "adjustment-defaults", data.adjustment, { diff: false });
-    }
-
-    async convertItems(html, event) {
+    async convertItems(event) {
         event.stopPropagation();
         event.preventDefault();
 
-        const fd = new FormDataExtended(html[0]);
+        const form = this.element.querySelector('form');
+        const fd = new FormDataExtended(form);
         let data = foundry.utils.expandObject(fd.object);
 
         for (let [k, v] of Object.entries(data.adjustment)) {
